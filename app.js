@@ -108,6 +108,51 @@ const PHASES = [
   who:'كل الفريق',out:'تأملات + تقرير الدورة',
   ev:[['تأملات من أعضاء الفريق', c => [new Set(inCy(D.notes, c).filter(n => n.context === 'after').map(n => n.author)).size, Math.max(1, D.team.length)]],['سلسلة AI مكتملة: دليل ← مقترح ← حكم ← قرار تمايز', c => [chainComplete(c), 2]]],
   act:[['كتابة تأمل','rec','after'],['تقرير الدورة','report','cycle']]}];
+/* The parallel cycle: all subjects move through the same seven stages together. */
+const cySubj = c => !c ? [] : (c.mode === 'parallel' ? ((c.subjects || []).length ? c.subjects : (typeof projSubjects === 'function' ? projSubjects() : SUBJ.map(s => s.n))) : [c.subject].filter(Boolean));
+const subjWith = (c, fn) => cySubj(c).filter(sj => fn(sj)).length;
+const inCyS = (arr, c, sj) => inCy(arr, c).filter(r => r.subject === sj);
+const PHASES_PAR = [
+ {n:'التشخيص والقياس القبلي',wk:'الأسبوع 1',goal:'كل معلمة تقيس طالباتها قبل أي تغيير، ويتفق الفريق على مشكلة تعلّم مشتركة بين المواد.',
+  do:['كل معلمة تطبّق مهمة قصيرة (10–15 دقيقة) في فصلها وتصححها بمقياس 0–4.','إدخال الدرجات من «درجات الطالبات ← الفصل كاملًا» بنقطة «خط الأساس».','اجتماع: كل معلمة تعرض نمط الصعوبة في 3 دقائق، ثم قرار بصياغة المشكلة المشتركة.'],
+  who:'كل معلمة في فصلها · تقود القائدة الاجتماع',out:'قياس قبلي لكل مادة + مشكلة مشتركة',
+  ev:[['مواد لها قياس قبلي', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Baseline')), cySubj(c).length]],['قرار بالمشكلة المشتركة', c => [inCy(D.decisions, c).length ? 1 : 0, 1]]],
+  act:[['إدخال الدرجات','rec','evidence'],['اجتماع الآن','meet','live']]},
+ {n:'التخطيط المشترك',wk:'الأسبوع 2',goal:'الفريق كله يخطط درس كل مادة، ثم يستعين بالذكاء الاصطناعي ويراجع مقترحه، فيخرج كل درس بنسخته الأولى V1.',
+  do:['معلمة كل مادة تحضر مسودة قصيرة قبل الاجتماع.','15 دقيقة لكل مادة: الهدف، أين ستتعثر الطالبات، مستويات الدعم أ/ب/ج.','بعد تفكير الفريق: استوديو AI لاقتراح البدائل، ثم قبول أو تعديل أو رفض مع السبب.','حفظ V1 لكل مادة، وتحديد موعد تدريس كل درس ومن تلاحظ.'],
+  who:'كل الفريق · قد يحتاج اجتماعين',out:'نسخة أولى V1 لكل مادة + جدول التدريس',
+  ev:[['مواد لها نسخة أولى V1', c => [subjWith(c, sj => inCyS(D.lessons, c, sj).some(l => (l.version || 1) === 1)), cySubj(c).length]],['مواد وُثّق فيها AI بحكم بشري', c => [subjWith(c, sj => inCyS(D.ai, c, sj).some(a => a.reason)), cySubj(c).length]]],
+  act:[['استوديو AI','go','ai'],['الدروس','go','lessons'],['اجتماع الآن','meet','live']]},
+ {n:'تدريس V1 وملاحظته بالتناوب',wk:'الأسابيع 3–5',goal:'كل أسبوع تدرّس معلمة مادة درسها، والفريق يلاحظ الطالبات، ثم جلسة قصيرة بعد الحصة مباشرة.',
+  do:['كل ملاحِظة تتابع مجموعة أو طالبتين وتسجّل من «ملاحظة حصة».','بطاقة خروج في آخر الحصة تُصحَّح وتُدخل بنقطة «أثناء الدورة».','جلسة 10 دقائق بعد الحصة، وتدوين أهم ما ظهر من «خارج الحصة» بنوع «تنفيذ درس البحث» في اليوم نفسه.'],
+  who:'معلمة المادة + بقية الفريق ملاحِظات',out:'ملاحظات وبطاقات خروج لكل مادة',
+  ev:[['مواد لوحظ درسها (3 ملاحظات على الأقل)', c => [subjWith(c, sj => inCyS(D.notes, c, sj).filter(n => n.context === 'in').length >= 3), cySubj(c).length]],['مواد لها جلسة ما بعد الحصة', c => [subjWith(c, sj => inCyS(D.notes, c, sj).some(n => n.kind === OUT_KINDS[2])), cySubj(c).length]],['مواد لها بطاقات خروج', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'During')), cySubj(c).length]]],
+  act:[['ملاحظة حصة','rec','in'],['جلسة بعد الحصة','rec','out'],['بطاقات الخروج','rec','evidence']]},
+ {n:'التحليل المشترك والمعالجة',wk:'الأسبوع 6',goal:'نضع نتائج المواد جنبًا إلى جنب: ما الذي نجح وأين؟ ولماذا؟ ثم نقرر تعديل كل درس.',
+  do:['اجتماع من «اجتماع الآن»: الأدلة لكل مادة، ثم المقارنة بين المواد.','بعد التحليل: استوديو AI لاقتراح تعديلات على ما لم ينجح، ثم المراجعة.','قرار مرتبط بدليل لكل مادة، ومهمة لكتابة V2.'],
+  who:'كل الفريق',out:'قرار لكل مادة + خطة V2',
+  ev:[['مواد لها قرار مرتبط بدليل', c => [subjWith(c, sj => inCy(D.decisions, c).some(d => d.evidence && (d.subject === sj || !d.subject))), cySubj(c).length]],['توثيق AI بعد الملاحظة بحكم بشري', c => [inCy(D.ai, c).filter(a => a.stage === 'S5' && a.reason).length ? 1 : 0, 1]]],
+  act:[['اجتماع الآن','meet','live'],['استوديو AI (تعديل)','go','ai']]},
+ {n:'تدريس V2',wk:'الأسبوع 7',goal:'كل معلمة تكتب V2 بناء على القرار وتدرّسها في فصل آخر، وتكفي ملاحظة زميلة واحدة.',
+  do:['إنشاء نسخة جديدة من الدرس مع «ما الذي تغيّر ولماذا».','تدريس V2 وتسجيل ملاحظات عليها.'],
+  who:'معلمة كل مادة + زميلة',out:'نسخة ثانية V2 مطبّقة لكل مادة',
+  ev:[['مواد لها نسخة ثانية V2', c => [subjWith(c, sj => inCyS(D.lessons, c, sj).some(l => (l.version || 1) >= 2)), cySubj(c).length]],['مواد لوحظت فيها V2', c => [subjWith(c, sj => inCyS(D.notes, c, sj).some(n => n.context === 'in' && /-V[2-9]/.test(n.lessonCode || ''))), cySubj(c).length]]],
+  act:[['نسخة جديدة','go','lessons'],['ملاحظة حصة','rec','in']]},
+ {n:'القياس البعدي',wk:'الأسبوع 7',goal:'مهمة بعدية مكافئة لمهمة الأسبوع الأول في كل فصل، ثم احتفاظ بعد 3–4 أسابيع.',
+  do:['المهمة نفسها بصيغة مكافئة، تُصحَّح بالمقياس نفسه.','الإدخال بنقطة «بعد الدورة».'],
+  who:'كل معلمة في فصلها',out:'مقارنة قبل/بعد لكل مادة',
+  ev:[['مواد لها قياس بعدي', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Post')), cySubj(c).length]]],
+  act:[['إدخال الدرجات','rec','evidence'],['تقرير أثر الطالبات','report','impact']]},
+ {n:'التأمل وإغلاق الدورة',wk:'الأسبوع 7',goal:'كل معلمة توثّق ما تغيّر في ممارستها، ونغلق الدورة بتقرير ونختار تركيز الدورة التالية.',
+  do:['تأمل من كل معلمة: ماذا لاحظتُ، ماذا تعلّمتُ، ماذا سأغيّر.','إصدار «تقرير الدورة» ومناقشته.'],
+  who:'كل الفريق',out:'تأملات + تقرير الدورة',
+  ev:[['تأملات من أعضاء الفريق', c => [new Set(inCy(D.notes, c).filter(n => n.context === 'after').map(n => n.author)).size, Math.max(1, D.team.length)]],['سلاسل AI مكتملة', c => [chainComplete(c), cySubj(c).length]]],
+  act:[['كتابة تأمل','rec','after'],['تقرير الدورة','report','cycle']]}];
+const phasesOf = c => c && c.mode === 'parallel' ? PHASES_PAR : PHASES;
+const phaseIdx = c => Math.min(phasesOf(c).length - 1, Math.max(0, Number((c && c.phase) || 1) - 1));
+const phaseOf = c => phasesOf(c)[phaseIdx(c)];
+const modeName = c => c && c.mode === 'parallel' ? 'متوازية' : 'مادة واحدة';
+
 
 const COLLS = ['access','team','classes','cycles','lessons','ai','notes','meetings','decisions','evidence','tasks','practice','exports','instruments','rqs','library'];
 const ICONS = {
@@ -283,9 +328,9 @@ function setupStatus() {
     ['أنشئي دورة البحث الأولى', D.cycles.length > 0, 'setup']];
 }
 function phaseCard(c, idx, compact) {
-  const p = PHASES[idx]; const ev = p.ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 ? true : n >= target}; });
+  const p = phasesOf(c)[idx]; const ev = p.ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 ? true : n >= target}; });
   const done = ev.filter(e => e.ok).length;
-  return `<div class="row between"><div><span class="chip ${idx + 1 === Number(c.phase) ? 'solid' : 'plain'}">المرحلة ${idx + 1} من 12 · ${esc(p.wk)}</span><h2 style="margin-top:6px">${esc(p.n)}</h2></div><span class="small muted">${done} من ${ev.length} أدلة مكتملة</span></div>
+  return `<div class="row between"><div><span class="chip ${idx + 1 === Number(c.phase) ? 'solid' : 'plain'}">المرحلة ${idx + 1} من ${phasesOf(c).length} · ${esc(p.wk)}</span><h2 style="margin-top:6px">${esc(p.n)}</h2></div><span class="small muted">${done} من ${ev.length} أدلة مكتملة</span></div>
   <p><b>الهدف:</b> ${esc(p.goal)}</p>
   <div class="cols"><div><h3>ماذا نفعل؟</h3><ul style="margin:6px 0 0;padding-inline-start:20px">${p.do.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted" style="margin-top:8px">المسؤولة: ${esc(p.who)} · المخرج: ${esc(p.out)}</p></div>
   <div><h3>متى تكتمل المرحلة؟</h3><ul class="checklist" style="margin-top:6px">${ev.map(e => `<li><span class="tick ${e.ok ? 'y' : 'n'}" aria-hidden="true">${e.ok ? '✓' : ''}</span><span>${esc(e.t)} <span class="muted small">(${e.n}${e.target ? ' من ' + e.target : ''})</span></span></li>`).join('')}</ul></div></div>
@@ -297,7 +342,7 @@ V.home = () => {
   const nextMeeting = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
   return `<div><h1>ماذا أفعل الآن؟</h1><p class="lede">${me ? `مرحبًا ${esc(me.code)} (${esc(me.discipline || '')}). ` : ''}هذه الصفحة تخبرك بالمرحلة الحالية، وما المطلوب منك هذا الأسبوع، وأين تسجّلينه.</p></div>
   ${setupDone ? '' : `<section class="panel"><h2>ابدئي هنا: إعداد المنصة في 4 خطوات</h2><p class="lede small">تُنجز مرة واحدة. بعدها تعمل كل الصفحات بفصولكِ ودورتكِ.</p><ul class="checklist">${st.map(([t, ok]) => `<li><span class="tick ${ok ? 'y' : 'n'}" aria-hidden="true">${ok ? '✓' : ''}</span><span>${esc(t)}</span></li>`).join('')}</ul><div><button class="btn" data-act="nav" data-view="setup">افتحي الإعداد</button></div></section>`}
-  ${c ? `<section class="panel">${phaseCard(c, Math.min(11, Math.max(0, Number(c.phase || 1) - 1)))}</section>` : ''}
+  ${c ? `<section class="panel">${phaseCard(c, phaseIdx(c))}</section>` : ''}
   <section class="panel"><h2>سجّلي بسرعة</h2><div class="grid">
     ${Object.entries(CONTEXTS).map(([k, x]) => `<button class="action" data-act="go-rec" data-t="${k}"><b>${icon(x.icon)}${esc(x.n)}</b><span>${esc(x.d)}</span></button>`).join('')}
     <button class="action" data-act="go-rec" data-t="evidence"><b>${icon('evidence')}دليل تعلّم طالبة</b><span>درجات 0–4 في التفسير والنقل والاستقلالية والتحقق.</span></button>
@@ -382,9 +427,9 @@ V.evidence = () => `<div><h1>أدلة تعلّم الطالبات</h1><p class="
 V.cycle = () => {
   const c = curCycle();
   if (!c) return `<div><h1>دورة بحث الدرس</h1></div><div class="empty">لا توجد دورة بعد. أنشئي الدورة الأولى من «الإعداد».</div><div><button class="btn" data-act="nav" data-view="setup">الإعداد</button></div>`;
-  const cur = Math.min(12, Math.max(1, Number(c.phase || 1))); const sel = S.phaseSel || cur;
-  return `<div><h1>دورة بحث الدرس ${esc(c.code)}</h1><p class="lede">${esc(c.title || '')} · مادة درس البحث: ${esc(c.subject || '—')}. اثنتا عشرة مرحلة في نحو ستة أسابيع؛ كل مرحلة لها هدف، ومهام، وأدلة تُكملها.</p></div>
-  <div class="steps" role="tablist" aria-label="المراحل">${PHASES.map((p, i) => `<button class="step ${i + 1 < cur ? 'done' : (i + 1 === cur ? 'now' : '')} ${i + 1 === sel ? 'sel' : ''}" role="tab" aria-selected="${i + 1 === sel}" data-act="phase-sel" data-p="${i + 1}"><i>${i + 1}</i>${esc(p.n)}</button>`).join('')}</div>
+  const cur = (phaseIdx(c) + 1); const sel = S.phaseSel || cur;
+  return `<div><h1>دورة بحث الدرس ${esc(c.code)}</h1><p class="lede">${esc(c.title || '')} · ${c.mode === 'parallel' ? 'دورة متوازية: ' + esc(cySubj(c).join('، ')) + '. سبع مراحل في نحو 7 أسابيع، وكل المواد تمر بها معًا.' : 'مادة درس البحث: ' + esc(c.subject || '—') + '. اثنتا عشرة مرحلة في نحو ستة أسابيع.'}</p></div>
+  <div class="steps" role="tablist" aria-label="المراحل">${phasesOf(c).map((p, i) => `<button class="step ${i + 1 < cur ? 'done' : (i + 1 === cur ? 'now' : '')} ${i + 1 === sel ? 'sel' : ''}" role="tab" aria-selected="${i + 1 === sel}" data-act="phase-sel" data-p="${i + 1}"><i>${i + 1}</i>${esc(p.n)}</button>`).join('')}</div>
   <section class="panel">${phaseCard(c, sel - 1)}</section>
   ${S.canEdit ? `<section class="panel"><h2>إدارة المرحلة (القائدة)</h2><p class="lede small">انقلي الدورة إلى المرحلة التالية عند اكتمال أدلتها. إن نقلتِها مع نقص، يبقى النقص ظاهرًا في المرحلة وفي تقرير الدورة.</p><div class="row"><button class="btn ghost" data-act="phase" data-id="${esc(c._id)}" data-d="-1"${cur <= 1 ? ' disabled' : ''}>المرحلة السابقة</button><button class="btn" data-act="phase" data-id="${esc(c._id)}" data-d="1"${cur >= 12 ? ' disabled' : ''}>الانتقال إلى المرحلة ${Math.min(12, cur + 1)}</button><button class="btn ghost" data-act="go-report" data-t="cycle">تقرير الدورة</button></div></section>` : ''}`;
 };
@@ -465,7 +510,7 @@ async function saveLessonVersion(o, extra) {
 /* ---- Meetings ---- */
 const PROTOCOL = ['5 د · افتتاح: هدف الاجتماع والمرحلة الحالية','15 د · عرض الأدلة: كل معلمة 3 دقائق بأدلة من فصلها','15 د · تحليل وقرار: ماذا تعني الأدلة؟ ما البدائل؟ ماذا نقرر؟','5 د · المهام: من يفعل ماذا وحتى متى','5 د · تأمل سريع: جملة من كل عضوة'];
 V.meetings = () => {
-  const t = S.meetTab; const c = curCycle(); const ph = c ? PHASES[Math.min(11, Math.max(0, Number(c.phase || 1) - 1))] : null;
+  const t = S.meetTab; const c = curCycle(); const ph = c ? phaseOf(c) : null;
   const tabs = [['live','اجتماع الآن'],['meetings','الاجتماعات'],['decisions','القرارات'],['tasks','المهام']];
   let body = '';
   if (t === 'live') body = liveHtml();
@@ -483,7 +528,7 @@ V.meetings = () => {
     <div class="row"><button class="btn" type="submit">حفظ القرار</button></div></form>
     <section class="panel"><h2>القرارات</h2><div class="ledger">${D.decisions.slice().sort(byNewest).map(d => `<div class="rec"><div class="row between"><div class="row"><span class="chip solid">${esc(d.code)}</span><b>${esc(d.decision)}</b></div><button class="btn ghost small" data-act="dec-status" data-id="${esc(d._id)}">${d.status === 'modified' ? 'عُدّل لاحقًا' : 'مستمر'} · تغيير</button></div><div class="meta">${subjChip(d.subject)}<span>${esc(d.cycleId || '')}</span><span>${esc(d.meetingId || '')}</span><span>${esc(fmtDate(d.date))}</span><span>${esc((d.participants || []).join('، '))}</span></div><dl class="kv">${[['situation','الموقف'],['evidence','الدليل'],['alternatives','البدائل'],['reason','السبب'],['action','الإجراء'],['outcome','النتيجة']].filter(([k]) => d[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(d[k])}</dd>`).join('')}</dl>
     <form data-form="dec-outcome" data-id="${esc(d._id)}" class="row">${inp('outcome', d.outcome, 'aria-label="النتيجة" placeholder="ماذا حدث بعد تطبيق القرار؟" style="flex:1 1 260px"')}<button class="btn ghost small" type="submit">حفظ النتيجة</button></form></div>`).join('') || '<div class="empty">لا قرارات بعد.</div>'}</div></section>`;
-  if (t === 'tasks') body = `<form class="panel" data-form="task"><h2>مهمة جديدة</h2><div class="grid">${field('المهمة', inp('title', '', 'required placeholder="مثال: إدخال درجات خط الأساس لفصلي"'))}${field('المسؤولة', `<select name="owner" id="f-owner">${opts([...D.team.map(m => [m.code, m.code + ' · ' + (m.discipline || '')]), ['الفريق','الفريق كله']])}</select>`)}${field('الاستحقاق', inp('due', '', 'type="date" required'))}${field('المرحلة', `<select name="phase" id="f-phase">${opts(PHASES.map((p, i) => [i + 1, (i + 1) + ' · ' + p.n]), c && c.phase)}</select>`)}${field('من اجتماع', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.map(m => m.code), '', '—')}</select>`)}</div><div class="row"><button class="btn" type="submit">إضافة المهمة</button></div></form>
+  if (t === 'tasks') body = `<form class="panel" data-form="task"><h2>مهمة جديدة</h2><div class="grid">${field('المهمة', inp('title', '', 'required placeholder="مثال: إدخال درجات خط الأساس لفصلي"'))}${field('المسؤولة', `<select name="owner" id="f-owner">${opts([...D.team.map(m => [m.code, m.code + ' · ' + (m.discipline || '')]), ['الفريق','الفريق كله']])}</select>`)}${field('الاستحقاق', inp('due', '', 'type="date" required'))}${field('المرحلة', `<select name="phase" id="f-phase">${opts(phasesOf(c).map((p, i) => [i + 1, (i + 1) + ' · ' + p.n]), c && c.phase)}</select>`)}${field('من اجتماع', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.map(m => m.code), '', '—')}</select>`)}</div><div class="row"><button class="btn" type="submit">إضافة المهمة</button></div></form>
     <section class="panel"><h2>المهام</h2><div class="ledger">${D.tasks.slice().sort((a, b) => (a.status === 'done') - (b.status === 'done') || String(a.due).localeCompare(String(b.due))).map(taskRow).join('') || '<div class="empty">لا مهام بعد.</div>'}</div></section>`;
   return `<div><h1>الاجتماعات والقرارات</h1><p class="lede">الاجتماع يُنتج قرارات ومهامًا. ملاحظاتك الشخصية في الاجتماع وبعده تُسجَّل من «سجّلي».</p></div>
   <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="meet-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
@@ -500,7 +545,7 @@ const REPORTS = [
   ['aichain','الدليل ← AI ← الحكم ← القرار ← النتيجة','للدكتوراه (RQ4) · كل دورة','كل استخدام للذكاء الاصطناعي بسلسلته الكاملة: الدليل، المقترح، الحكم البشري، قرار التمايز، النتيجة.'],
   ['minutes','محضر اجتماع','للفريق والإدارة · بعد كل اجتماع','الحضور، الهدف، الأدلة، ما دوّنته العضوات، القرارات، المهام، التأملات.']];
 function rpTable(head, rows) { return `<div class="scroll"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${head.length}">لا بيانات بعد.</td></tr>`}</tbody></table></div>`; }
-function phaseGaps(c) { if (!c) return []; const idx = Math.min(11, Math.max(0, Number(c.phase || 1) - 1)); return PHASES[idx].ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 || n >= target}; }); }
+function phaseGaps(c) { if (!c) return []; const idx = phaseIdx(c); return phasesOf(c)[idx].ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 || n >= target}; }); }
 function buildReport(type, cy) {
   if (type === 'minutes') return minutesHtml(S.repMeeting);
   if (type === 'aichain') { const c0 = D.cycles.find(x => x.code === cy) || curCycle(); const rows = chainRows((c0 ? D.ai.filter(a => a.cycleId === c0.code) : D.ai).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))); const st0 = D.settings; return `<h2>الدليل ← مقترح الذكاء الاصطناعي ← الحكم البشري ← قرار التمايز ← النتيجة</h2><div class="rmeta"><span>${esc(st0.projectName || 'بُرهان')}</span>${c0 ? `<span>الدورة ${esc(c0.code)}</span>` : ''}<span>تاريخ الإصدار: ${esc(fmtDate(today()))}</span><span>وضع البيانات: ${esc(phase())}</span></div><h3>الملخص</h3>${rpTable(['المؤشر','القيمة'], [['سجلات الذكاء الاصطناعي', rows.length], ['سلاسل مكتملة (5 حلقات)', rows.filter(r => r.complete).length], ['قبول / تعديل / رفض', rows.filter(r => r.a.decision === 'accepted').length + ' / ' + rows.filter(r => r.a.decision === 'modified').length + ' / ' + rows.filter(r => r.a.decision === 'rejected').length], ['قبل الدرس (اجتماع 1–4) / بعده (اجتماع 5–6)', rows.filter(r => ['S1','S2','S3','S4'].includes(r.a.stage)).length + ' / ' + rows.filter(r => ['S5','S6'].includes(r.a.stage)).length], ['جماعي / فردي', rows.filter(r => String(r.a.scope).startsWith('جماعي')).length + ' / ' + rows.filter(r => r.a.scope === 'فردي').length]])}<h3>السلاسل</h3>${chainTable(rows)}<h3>قراءة التقرير</h3><ul><li>السلسلة المكتملة تُظهر كيف أسهم الذكاء الاصطناعي في قرار تمايز محدد، وأين عدّله الحكم البشري.</li><li>الحلقات الناقصة تُكمل من الاستوديو (عرض النصين وتسجيل الأثر) أو من القرارات.</li></ul>`; }
@@ -512,7 +557,7 @@ function buildReport(type, cy) {
     const late = D.tasks.filter(t => t.status !== 'done' && t.due && t.due < today()); const doneW = D.tasks.filter(t => t.status === 'done' && (t.doneAt || '') >= from);
     const nextM = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
     return head('التقرير الأسبوعي', 'من ' + fmtDate(from) + ' إلى ' + fmtDate(today())) +
-      `<h3>المرحلة الحالية</h3><p>${c ? 'المرحلة ' + esc(c.phase) + ': ' + esc(PHASES[(c.phase || 1) - 1].n) + ' — ' + esc(PHASES[(c.phase || 1) - 1].goal) : 'لا دورة نشطة.'}</p>
+      `<h3>المرحلة الحالية</h3><p>${c ? 'المرحلة ' + esc(c.phase) + ': ' + esc(phaseOf(c).n) + ' — ' + esc(phaseOf(c).goal) : 'لا دورة نشطة.'}</p>
       <h3>ما سُجّل هذا الأسبوع حسب المقرر</h3>${rpTable(['المقرر','أثناء الحصة','خارج الحصة','في/بعد الاجتماع','أدلة تعلّم','سجلات AI','نسخ دروس'], SUBJ.map(s => { const f = arr => wk(arr).filter(r => r.subject === s.n); return [subjChip(s.n), f(D.notes).filter(n => n.context === 'in').length, f(D.notes).filter(n => n.context === 'out').length, f(D.notes).filter(n => n.context === 'meeting' || n.context === 'after').length, f(D.evidence).length, f(D.ai).length, f(D.lessons).length]; }))}
       <h3>المهام</h3><p>أُنجزت هذا الأسبوع: <b>${doneW.length}</b> · متأخرة: <b>${late.length}</b></p>${late.length ? rpTable(['المهمة','المسؤولة','الاستحقاق'], late.map(t => [esc(t.title), esc(t.owner), esc(fmtDate(t.due))])) : ''}
       <h3>أدلة المرحلة الناقصة</h3>${rpTable(['الدليل','الموجود','المطلوب','الحالة'], phaseGaps(c).map(g => [esc(g.t), g.n, g.target || '—', g.ok ? 'مكتمل' : '<b>ناقص</b>']))}
@@ -525,7 +570,7 @@ function buildReport(type, cy) {
     return head('تقرير دورة بحث الدرس', c ? 'المرحلة الحالية ' + c.phase + ' من 12' : '') +
       `<h3>١. مشكلة التعلّم وسؤال الاستقصاء</h3><dl class="kv"><dt>المشكلة</dt><dd>${esc(st.learningProblem || '—')}</dd><dt>سؤال الاستقصاء</dt><dd>${esc(st.inquiryQuestion || '—')}</dd><dt>الهدف بعيد المدى</dt><dd>${esc(st.goal || '—')}</dd><dt>المقررات المشاركة</dt><dd>${esc([...new Set([...N, ...E].map(r => r.subject).filter(Boolean))].join('، ') || '—')}</dd></dl>
       <h3>٢. الفريق والفصول</h3>${rpTable(['الرمز','التخصص','الدور'], D.team.map(m => [esc(m.code), esc(m.discipline), esc(m.role)]))}${rpTable(['الفصل','المقرر','عدد الطالبات'], D.classes.map(x => [esc(x.name), subjChip(x.subject), esc(x.count)]))}
-      <h3>٣. الإنجاز حسب المراحل</h3>${rpTable(['المرحلة','الأدلة'], PHASES.map((p, i) => [esc((i + 1) + '. ' + p.n), p.ev.map(([t, fn]) => { const [n, tg] = c ? fn(c) : [0, 0]; return esc(t) + ': ' + n + (tg ? '/' + tg : '') + (tg === 0 || n >= tg ? ' ✓' : ''); }).join('<br>')]))}
+      <h3>٣. الإنجاز حسب المراحل</h3>${rpTable(['المرحلة','الأدلة'], phasesOf(c).map((p, i) => [esc((i + 1) + '. ' + p.n), p.ev.map(([t, fn]) => { const [n, tg] = c ? fn(c) : [0, 0]; return esc(t) + ': ' + n + (tg ? '/' + tg : '') + (tg === 0 || n >= tg ? ' ✓' : ''); }).join('<br>')]))}
       <h3>٤. تطور درس البحث</h3>${rpTable(['النسخة','المقرر','ما تغيّر ولماذا','القرار','AI'], L.map(l => [esc(l._id), subjChip(l.subject), esc(l.changeNote || (l.version === 1 ? 'النسخة الأولى' : '')), esc(l.decisionId || ''), esc(l.aiRecord || '')]))}
       <h3>٥. أبرز لحظات التعثّر الملحوظة</h3>${rpTable(['المقرر','الطالبة/المجموعة','التعثّر','الدعم','الاستجابة'], stumbles.map(n => [subjChip(n.subject), esc(n.target), esc(n.stumble), esc(n.promptUsed || n.supportType), esc(n.response)]))}
       <h3>٦. القرارات المبنية على الأدلة</h3>${rpTable(['الرمز','الدليل','القرار','السبب','النتيجة'], Dc.map(d => [esc(d.code), esc(d.evidence), esc(d.decision), esc(d.reason), esc(d.outcome || '—')]))}
@@ -655,8 +700,15 @@ V.setup = () => {
     ${ed ? `<form data-form="member" class="grid">${field('تخصص العضوة الجديدة', `<select name="discipline" id="f-discipline">${opts([...SUBJ.map(s => s.n), 'أخرى'])}</select>`)}${field('الدور', `<select name="role" id="f-role">${opts(['معلمة مشاركة','قائدة المشروع','باحثة','ملاحِظة درس'])}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة عضوة</button></div></form>` : ''}</section>
   <section class="panel">${stepHead(4, 'الفصول', 'اسم الفصل وعدد طالباته لكل مقرر. يُحفظان تلقائيًا مع كل سجل.')}<div class="ledger">${SUBJ.map(s => { const cl = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cl.length} فصل</span></div><div class="row">${cl.map(x => `<span class="chip ${x.classRole === 'comparison' ? 'warn' : 'plain'}">${esc(x.name)} · ${esc(x.count)} طالبة${x.teacher ? ' · ' + esc(x.teacher) : ''}${x.classRole === 'comparison' ? ' · مقارنة' : ''}</span>`).join('') || '<span class="small muted">لا فصول بعد</span>'}</div></div>`; }).join('')}</div>
     <form data-form="class" class="grid">${field('المقرر', `<select name="subject" id="f-csubject">${opts(SUBJ.map(s => s.n), mySubject())}</select>`)}${field('اسم الفصل', inp('name', '', 'placeholder="2/3 علمي" required'))}${field('عدد الطالبات', inp('count', '', 'type="number" min="1" max="60" inputmode="numeric" required'))}${field('الصف', inp('grade', '', 'placeholder="الثاني الثانوي"'))}${field('نوع الشعبة', `<select name="classRole" id="f-classRole">${opts([['intervention','تدخّل'],['comparison','مقارنة (تُقاس فقط)']])}</select>`)}${field('المعلمة', `<select name="teacher" id="f-cteacher">${opts(D.team.map(m => m.code), myCode())}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة الفصل</button></div></form></section>
-  <section class="panel">${stepHead(5, 'دورات بحث الدرس', 'دورة واحدة نشطة في كل مرة، نحو 6 أسابيع.')}<div class="ledger">${D.cycles.slice().sort((a, b) => a.code.localeCompare(b.code)).map(c => `<div class="rec"><div class="row between"><b>${esc(c.code)} · ${esc(c.title || '')}</b><span class="chip">${esc(c.studyPhase)} · المرحلة ${esc(c.phase)}: ${esc(PHASES[(c.phase || 1) - 1].n)}</span></div><div class="meta">${subjChip(c.subject)}<span>بدأت ${esc(fmtDate(c.startDate))}</span></div></div>`).join('') || '<div class="empty">لا دورات بعد.</div>'}</div>
-    ${ed ? `<form data-form="cycle" class="grid">${field('عنوان الدورة', inp('title', '', 'placeholder="مثال: من الإجراء إلى التفسير" required'))}${field('مقرر درس البحث', `<select name="subject" id="f-cysubject">${opts(SUBJ.map(s => s.n))}</select>`)}${field('تاريخ البداية', inp('startDate', today(), 'type="date"'))}${field('وضع الدورة', `<select name="cyPhase" id="f-cyPhase">${opts([['Pilot','Pilot · تجريبية'],['Formal','Formal · رسمية']], phase())}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إنشاء الدورة</button></div></form>` : ''}</section>`;
+  <section class="panel">${stepHead(5, 'دورات بحث الدرس', 'دورة واحدة نشطة في كل مرة، نحو 6 أسابيع.')}<div class="ledger">${D.cycles.slice().sort((a, b) => a.code.localeCompare(b.code)).map(c => `<div class="rec"><div class="row between"><b>${esc(c.code)} · ${esc(c.title || '')}</b><span class="chip">${esc(c.studyPhase)} · المرحلة ${esc(c.phase)}: ${esc(phaseOf(c).n)}</span></div><div class="meta">${subjChip(c.subject)}<span>بدأت ${esc(fmtDate(c.startDate))}</span></div></div>`).join('') || '<div class="empty">لا دورات بعد.</div>'}</div>
+    ${ed ? `<form data-form="cycle" class="stepsec"><div class="hint">طريقة العمل في هذه الدورة</div>
+    <div class="modecards" role="radiogroup" aria-label="طريقة العمل">
+      <label><input type="radio" name="cyMode" value="single" checked><b>مادة واحدة</b><span>درس بحثي في مادة واحدة، والفريق كله يخطط ويلاحظ ويحلّل. 12 مرحلة في نحو 6 أسابيع، والمواد تتناوب بين الدورات.</span></label>
+      <label><input type="radio" name="cyMode" value="parallel"><b>متوازية (كل المواد معًا)</b><span>قياس قبلي في كل المواد، تخطيط مشترك، تدريس V1 بالتناوب، تحليل مشترك، ثم V2 وقياس بعدي. 7 مراحل في نحو 7 أسابيع.</span></label>
+    </div>
+    <div class="grid">${field('عنوان الدورة', inp('title', '', 'placeholder="مثال: من الإجراء إلى التفسير" required'))}<div data-mode-single>${field('مقرر درس البحث', `<select name="subject" id="f-cysubject">${opts(SUBJ.map(s => s.n))}</select>`)}</div>${field('تاريخ البداية', inp('startDate', today(), 'type="date"'))}${field('وضع البيانات', `<select name="cyPhase" id="f-cyPhase">${opts([['Pilot','Pilot · تجريبية'],['Formal','Formal · رسمية']], phase())}</select>`)}</div>
+    <div data-mode-par hidden><div class="hint" style="margin-bottom:6px">المواد المشاركة في هذه الدورة (مادتان على الأقل)</div>${checks('cySubjects', SUBJ.map(s => [s.n, s.n]), SUBJ.map(s => s.n))}</div>
+    <div class="row"><button class="btn" type="submit">إنشاء الدورة</button></div></form>` : ''}</section>`;
 };
 
 /* =========================================================
@@ -720,7 +772,7 @@ V.dash = () => {
   const tasksDone = D.tasks.length ? Math.round(D.tasks.filter(t => t.status === 'done').length / D.tasks.length * 100) : null;
   const recs = [...N.map(r => ({...r, _k: 'n'})), ...E.map(r => ({...r, _k: 'e'})), ...A.map(r => ({...r, _k: 'a'})), ...Dc.map(r => ({...r, _k: 'd'}))];
   const freq = {}; [...N, ...A].forEach(r => (r.practices || []).forEach(p => { freq[p] = (freq[p] || 0) + 1; })); const mx = Math.max(1, ...Object.values(freq));
-  const c = curCycle(); const gaps = c ? PHASES.map((p, i) => { const ev = p.ev.map(([, fn]) => fn(c)); const ok = ev.filter(([n, t]) => t === 0 || n >= t).length; return {i, p, ok, tot: ev.length}; }) : [];
+  const c = curCycle(); const gaps = c ? phasesOf(c).map((p, i) => { const ev = p.ev.map(([, fn]) => fn(c)); const ok = ev.filter(([n, t]) => t === 0 || n >= t).length; return {i, p, ok, tot: ev.length}; }) : [];
   return `<div class="row between"><div><h1>لوحة المعلومات</h1><p class="lede">صورة المشروع الآن: النشاط، الأدلة، التمايز، الذكاء الاصطناعي، والفريق. مرّري المؤشر على أي عمود لترَي الرقم.</p></div><button class="btn ghost" data-act="go-report" data-t="weekly">التقرير الأسبوعي</button></div>
   <div class="row between">${subjBar()}<label class="row small" style="font-weight:600">الدورة <select id="dashCycle" style="width:auto">${opts(D.cycles.map(x => x.code), cy, 'كل الدورات')}</select></label></div>
   <div class="grid">${[['طالبة في الفصول المشاركة', students], ['سجل هذا الأسبوع', thisWeek], ['دليل تعلّم', E.length], ['قرارات مبنية على دليل', decEv == null ? '—' : decEv + '%'], ['مقترحات AI عدّلتها المعلمة أو رفضتها', aiMod == null ? '—' : aiMod + '%'], ['إنجاز المهام', tasksDone == null ? '—' : tasksDone + '%']].map(([l, v]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>
@@ -1013,7 +1065,7 @@ document.addEventListener('click', async e => {
 function renderNavBase() {
   $('#nav').innerHTML = NAV.map(([g, items]) => `<div class="navgroup">${esc(g)}</div>` + items.map(([k, l]) => `<button class="nav" data-act="nav" data-view="${k}"${k === S.view ? ' aria-current="page"' : ''}>${icon(k === 'rec' ? 'rec' : k)}<span>${l}</span></button>`).join('')).join('');
   const me = myMember(); const c = curCycle();
-  $('#who').innerHTML = S.err ? esc(S.err) : `${me ? `أنتِ: <b>${esc(me.code)}</b> · ${esc(me.discipline || '')}` : `حسابك غير مرتبط برمز — <button data-act="nav" data-view="setup">اربطيه</button>`}<br>${c ? `الدورة <b>${esc(c.code)}</b> · المرحلة <b>${esc(c.phase)}</b>: ${esc(PHASES[(c.phase || 1) - 1].n)}<br>` : ''}البيانات: <b>${esc(phase())}</b>`;
+  $('#who').innerHTML = S.err ? esc(S.err) : `${me ? `أنتِ: <b>${esc(me.code)}</b> · ${esc(me.discipline || '')}` : `حسابك غير مرتبط برمز — <button data-act="nav" data-view="setup">اربطيه</button>`}<br>${c ? `الدورة <b>${esc(c.code)}</b> · المرحلة <b>${esc(c.phase)}</b>: ${esc(phaseOf(c).n)}<br>` : ''}البيانات: <b>${esc(phase())}</b>`;
 }
 function render() {
   renderNav(); const v = $('#view');
@@ -1070,7 +1122,7 @@ document.addEventListener('click', async e => {
   if (act === 'dec-status') { const d = D.decisions.find(x => x._id === b.dataset.id); if (d) try { await S.db.collection('decisions').doc(d._id).update({status: d.status === 'modified' ? 'continued' : 'modified'}); } catch (x) { handleDbErr(x); } }
   if (act === 'link') { try { await S.db.collection('team').doc(b.dataset.id).update({userId: S.uid}); toast('رُبط حسابك بالرمز.'); } catch (x) { handleDbErr(x); } }
   if (act === 'unlink') { const m = myMember(); if (m) try { await S.db.collection('team').doc(m._id).update({userId: ''}); } catch (x) { handleDbErr(x); } }
-  if (act === 'phase') { const c = D.cycles.find(x => x._id === b.dataset.id); if (c) { const gaps = phaseGaps(c).filter(g => !g.ok); const p = Math.min(12, Math.max(1, Number(c.phase || 1) + Number(b.dataset.d))); try { await S.db.collection('cycles').doc(c._id).update({phase: p}); S.phaseSel = p; toast(c.code + ': المرحلة ' + p + ' · ' + PHASES[p - 1].n + (Number(b.dataset.d) > 0 && gaps.length ? ` (بقي ${gaps.length} دليل ناقص في المرحلة السابقة)` : '')); } catch (x) { handleDbErr(x); } } }
+  if (act === 'phase') { const c = D.cycles.find(x => x._id === b.dataset.id); if (c) { const gaps = phaseGaps(c).filter(g => !g.ok); const p = Math.min(phasesOf(c).length, Math.max(1, Number(c.phase || 1) + Number(b.dataset.d))); try { await S.db.collection('cycles').doc(c._id).update({phase: p}); S.phaseSel = p; toast(c.code + ': المرحلة ' + p + ' · ' + phasesOf(c)[p - 1].n + (Number(b.dataset.d) > 0 && gaps.length ? ` (بقي ${gaps.length} دليل ناقص في المرحلة السابقة)` : '')); } catch (x) { handleDbErr(x); } } }
   if (act === 'ai-compose') { const f = $('#aiForm'); f.prompt.value = composePrompt(Object.assign(formData(f), {})); S.dirty = true; }
   if (act === 'ai-copy') { const f = $('#aiForm'); if (!f.aiOutput.value) { toast('لا يوجد مقترح بعد. أرسلي الطلب أو الصقي مخرج الأداة.'); return; } f.teacherFinal.value = f.aiOutput.value; S.dirty = true; updateAiDiff(); f.teacherFinal.focus(); }
   if (act === 'ai-stop') { if (S.aiAbort) S.aiAbort.abort(); }
@@ -1155,7 +1207,7 @@ document.addEventListener('submit', async e => {
     if (kind === 'settings') { await S.db.doc('config/project').set(Object.assign({}, D.settings, o, {updatedAt: new Date().toISOString()})); toast('حُفظت الإعدادات.'); done = 1; }
     if (kind === 'member') { const code = await nextCode('team', 'T', 2); await S.db.collection('team').doc(code).set({code, discipline: o.discipline, role: o.role, status: 'نشطة', joined: today(), userId: ''}); toast('أُضيفت ' + code); done = code; }
     if (kind === 'class') { done = await create('classes', 'CL', 2, {name: o.name, count: Number(o.count) || null, subject: o.subject, grade: o.grade, teacher: o.teacher, classRole: o.classRole || 'intervention', createdAt: new Date().toISOString()}); if (done) toast('أُضيف الفصل ' + o.name); }
-    if (kind === 'cycle') { done = await create('cycles', 'C', 2, {title: o.title, subject: o.subject, startDate: o.startDate, phase: 1, studyPhase: o.cyPhase || phase(), createdAt: new Date().toISOString()}); if (done) { await S.db.doc('config/project').set(Object.assign({}, D.settings, {currentCycle: done})); toast('أُنشئت الدورة ' + done + ' وأصبحت الدورة الحالية.'); } }
+    if (kind === 'cycle') { const par = o.cyMode === 'parallel'; const subs = par ? (o.cySubjects || []) : []; if (par && subs.length < 2) { toast('الدورة المتوازية تحتاج مادتين على الأقل.'); return; } done = await create('cycles', 'C', 2, {title: o.title, mode: par ? 'parallel' : 'single', subject: par ? '' : o.subject, subjects: subs, startDate: o.startDate, phase: 1, studyPhase: o.cyPhase || phase(), createdAt: new Date().toISOString()}); if (done) { await S.db.doc('config/project').set(Object.assign({}, D.settings, {currentCycle: done})); toast('أُنشئت الدورة ' + done + ' وأصبحت الدورة الحالية.'); } }
   } catch (x) { handleDbErr(x); }
   finally { btns.forEach(b => { b.disabled = false; }); }
   if (done) { rememberCtx(o, kind); dropDraft(f); }
@@ -1378,17 +1430,18 @@ function linkChooser() {
   <div class="chips">${free.map(m => `<button type="button" class="c" data-act="link" data-id="${esc(m._id)}">أنا ${esc(m.code)} · ${esc(m.discipline || '')}</button>`).join('') || '<span class="muted small">كل الرموز مرتبطة. اطلبي من قائدة المشروع إضافة رمز لكِ.</span>'}</div></section>`;
 }
 function cycleStrip(c) {
-  const cur = Math.min(12, Math.max(1, Number(c.phase || 1)));
-  return `<div class="strip" aria-hidden="true">${PHASES.map((p, i) => `<span class="${i + 1 < cur ? 'd' : (i + 1 === cur ? 'n' : '')}" title="${esc((i + 1) + ' · ' + p.n)}"></span>`).join('')}</div>`;
+  const cur = (phaseIdx(c) + 1);
+  return `<div class="strip" aria-hidden="true">${phasesOf(c).map((p, i) => `<span class="${i + 1 < cur ? 'd' : (i + 1 === cur ? 'n' : '')}" title="${esc((i + 1) + ' · ' + p.n)}"></span>`).join('')}</div>`;
 }
 const actBtn = ([l, a, t], primary) => `<button class="btn ${primary ? 'bigbtn' : 'ghost'}" data-act="${a === 'rec' ? 'go-rec' : (a === 'meet' ? 'go-meet' : (a === 'report' ? 'go-report' : 'nav'))}" data-view="${esc(t)}" data-t="${esc(t)}">${esc(l)}</button>`;
 function nextStepCard(c) {
-  const idx = Math.min(11, Math.max(0, Number(c.phase || 1) - 1)); const p = PHASES[idx]; const gaps = phaseGaps(c); const done = gaps.filter(g => g.ok).length;
-  const next = PHASES[idx + 1];
-  return `<section class="panel hero"><div class="row between"><span class="kicker">الدورة ${esc(c.code)} · المرحلة ${idx + 1} من 12 · ${esc(p.wk)}</span><button class="btn ghost small" data-act="nav" data-view="cycle">كل المراحل</button></div>${cycleStrip(c)}
+  const idx = phaseIdx(c); const p = phasesOf(c)[idx]; const gaps = phaseGaps(c); const done = gaps.filter(g => g.ok).length;
+  const next = phasesOf(c)[idx + 1];
+  return `<section class="panel hero"><div class="row between"><span class="kicker">الدورة ${esc(c.code)} · المرحلة ${idx + 1} من ${phasesOf(c).length} · ${esc(p.wk)}</span><button class="btn ghost small" data-act="nav" data-view="cycle">كل المراحل</button></div>${cycleStrip(c)}
   <h2 style="font-size:24px">${esc(p.n)}</h2><p><b>المطلوب الآن:</b> ${esc(p.goal)}</p>
   <div class="row">${p.act.map((a, i) => actBtn(a, i === 0)).join('')}</div>
   <div class="mini"><b class="small">تكتمل المرحلة عندما يتوفر (${done} من ${gaps.length}):</b>${gaps.map(g => `<div class="gap"><span class="tick ${g.ok ? 'y' : 'n'}" aria-hidden="true">${g.ok ? '✓' : ''}</span><span style="flex:1">${esc(g.t)}</span>${g.target ? `<div class="meter" aria-hidden="true"><span style="width:${Math.min(100, Math.round(g.n / g.target * 100))}%"></span></div><span class="small muted">${g.n}/${g.target}</span>` : ''}</div>`).join('')}</div>
+  ${c.mode === 'parallel' ? subjGrid(c) : ''}
   <details class="more"><summary>ماذا نفعل في هذه المرحلة؟ ومن المسؤولة؟</summary><ul style="margin:0;padding-inline-start:20px">${p.do.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted">المسؤولة: ${esc(p.who)} · المخرج: ${esc(p.out)}${next ? ' · بعدها: ' + esc(next.n) : ''}</p></details></section>`;
 }
 function memberActivity(m, lastMeet) {
@@ -1443,7 +1496,7 @@ V.home = () => {
 
 /* ---- Live meeting mode ---- */
 const LIVE_STEPS = [['افتتاح', 5], ['عرض الأدلة', 15], ['تحليل وقرار', 15], ['المهام', 5], ['تأمل وحفظ', 5]];
-function liveNew() { const c = curCycle(); const ph = c ? PHASES[Math.min(11, Math.max(0, Number(c.phase || 1) - 1))] : null; return {step: 0, started: 0, stepAt: 0, date: today(), cycleId: c ? c.code : '', goal: ph ? 'المرحلة ' + c.phase + ' (' + ph.n + '): ' + ph.goal : '', attendees: D.team.map(m => m.code), ev: {}, discussion: '', decisions: [], tasks: [], reflection: ''}; }
+function liveNew() { const c = curCycle(); const ph = c ? phaseOf(c) : null; return {step: 0, started: 0, stepAt: 0, date: today(), cycleId: c ? c.code : '', goal: ph ? 'المرحلة ' + c.phase + ' (' + ph.n + '): ' + ph.goal : '', attendees: D.team.map(m => m.code), ev: {}, discussion: '', decisions: [], tasks: [], reflection: ''}; }
 function live() { if (!S.live) S.live = store.get('live', null) || liveNew(); return S.live; }
 function liveSave() { store.set('live', S.live); }
 const lv = (path, val, attrs = '', tag = 'textarea') => tag === 'textarea' ? `<textarea data-live="${path}" ${attrs}>${esc(val || '')}</textarea>` : `<input data-live="${path}" value="${esc(val || '')}" ${attrs}>`;
@@ -1458,7 +1511,7 @@ function liveHtml() {
     <div><button class="btn bigbtn" type="button" data-act="live-start">ابدئي الاجتماع</button></div></section>`;
   const st = L.step; const att = D.team.filter(m => L.attendees.includes(m.code));
   let body = '';
-  if (st === 0) { const ph = c ? PHASES[Math.min(11, Math.max(0, Number(c.phase || 1) - 1))] : null; body = `${field('هدف الاجتماع', lv('goal', L.goal, 'rows="2"'))}${ph ? `<div class="mini"><b class="small">أين نحن: المرحلة ${esc(c.phase)} · ${esc(ph.n)}</b><span class="small">${esc(ph.goal)}</span>${phaseGaps(c).map(g => `<span class="small">${g.ok ? '✓' : '○'} ${esc(g.t)} (${g.n}${g.target ? '/' + g.target : ''})</span>`).join('')}</div>` : ''}`; }
+  if (st === 0) { const ph = c ? phaseOf(c) : null; body = `${field('هدف الاجتماع', lv('goal', L.goal, 'rows="2"'))}${ph ? `<div class="mini"><b class="small">أين نحن: المرحلة ${esc(c.phase)} · ${esc(ph.n)}</b><span class="small">${esc(ph.goal)}</span>${phaseGaps(c).map(g => `<span class="small">${g.ok ? '✓' : '○'} ${esc(g.t)} (${g.n}${g.target ? '/' + g.target : ''})</span>`).join('')}</div>` : ''}`; }
   if (st === 1) body = `<p class="small muted">3 دقائق لكل معلمة: ماذا تُظهر أعمال طالباتها؟ اكتبي الأرقام والرموز لا الانطباعات.</p><div class="grid wide">${att.map(m => field(m.code + ' · ' + (m.discipline || ''), lv('ev.' + m.code, L.ev[m.code], 'rows="3" placeholder="مثال: 4 من 6 بطاقات خروج فسّرت دون نقل (E0012–E0017)"'))).join('')}</div>`;
   if (st === 2) body = `${field('ماذا تعني الأدلة؟ ما البدائل التي طُرحت؟', lv('discussion', L.discussion, 'rows="4"'))}
     <div class="mini"><b>إضافة قرار</b><div class="grid wide">${field('الدليل', `<textarea id="ldEv" rows="2" placeholder="لا قرار بلا دليل: رموز أو أرقام"></textarea>`)}${field('القرار', `<textarea id="ldDec" rows="2" placeholder="ماذا قرّرنا؟"></textarea>`)}${field('السبب', `<textarea id="ldWhy" rows="2"></textarea>`)}${field('الإجراء', `<textarea id="ldAct" rows="2" placeholder="ماذا سنفعل؟ في أي نسخة من الدرس؟"></textarea>`)}</div><div class="row">${field('المقرر المعني', `<select id="ldSubj">${opts(SUBJ.map(s => s.n), '', 'كل المقررات')}</select>`)}<button type="button" class="btn" data-act="live-dec" style="align-self:end">＋ إضافة القرار</button></div></div>
@@ -1567,7 +1620,7 @@ const ABOUT_WHEN = [
 V.about = () => `<div><h1>ما هو بُرهان؟</h1><p class="lede">منصة عمل لمجتمع تعلّم مهني من معلمين ومعلمات من تخصصات مختلفة يطوّرون معًا تدريسًا متمايزًا عبر <b>بحث الدرس</b>، بمساندة الذكاء الاصطناعي، ويحفظن كل خطوة دليلًا.</p></div>
   <section class="panel hero"><span class="kicker">الفكرة في سطرين</span><h2 style="font-size:22px">دليلٌ على التعلّم، وقرارٌ مبنيٌّ على الدليل</h2><p>لا نغيّر الدرس لأننا «نشعر» أنه أفضل، بل لأن أعمال الطالبات تقول ذلك. وبُرهان يجمع هذه الأدلة في مكان واحد: ماذا رأينا، ماذا قررنا، ماذا اقترح الذكاء الاصطناعي وماذا اخترنا، وماذا تغيّر عند الطالبات.</p></section>
   <section class="panel"><h2>لماذا؟ الأهداف</h2><div class="grid">${[['للطالبات', 'أن تنتقل الطالبة من حل الخطوات إلى تفسيرها ونقلها لموقف جديد، كلٌّ حسب مستواها.'], ['للمعلمات', 'تطوير ممارسات التعليم المتمايز والحكم المهني عبر عمل جماعي حقيقي داخل الصف، لا دورات منفصلة.'], ['للذكاء الاصطناعي', 'استخدامه مساعدًا يقترح، والقرار للمعلمة دائمًا، مع توثيق ما قُبل وما عُدّل وما رُفض.'], ['للمدرسة والبحث', 'نموذج موثّق قابل للتطبيق في مدارس أخرى، وبيانات منظمة تخدم دراسة علمية.']].map(([t, d]) => `<div class="mini"><b>${esc(t)}</b><span class="small">${esc(d)}</span></div>`).join('')}</div></section>
-  <section class="panel"><h2>كيف نعمل؟ دورة بحث الدرس (نحو 6 أسابيع)</h2><p class="small muted">الدورة الكاملة 12 مرحلة، وهذه هي الخطوات الكبرى. الصفحة الرئيسة تخبركِ دائمًا في أي مرحلة نحن وما المطلوب الآن.</p>
+  <section class="panel"><h2>كيف نعمل؟ دورة بحث الدرس (نحو 6 أسابيع)</h2><p class="small muted">طريقتان تختارهما القائدة عند إنشاء الدورة: «مادة واحدة» (12 مرحلة) أو «متوازية» تمر فيها كل المواد معًا بسبع مراحل. وهذه هي الخطوات الكبرى في الطريقتين. الصفحة الرئيسة تخبركِ دائمًا في أي مرحلة نحن وما المطلوب الآن.</p>
   <div class="ledger">${ABOUT_FLOW.map(([n, t, d]) => `<div class="rec"><div class="stephead"><span class="n">${n}</span><div><h3>${esc(t)}</h3><p>${esc(d)}</p></div></div></div>`).join('')}</div></section>
   <section class="panel"><h2>ماذا أسجّل، ومتى؟</h2><div class="grid">${ABOUT_WHEN.map(([ic, t, d, go]) => `<button class="action" data-act="${go === 'ai' ? 'nav' : (go === 'meet' ? 'go-meet' : 'go-rec')}" data-view="${go === 'ai' ? 'ai' : 'meetings'}" data-t="${go === 'meet' ? 'live' : go}"><b>${icon(ic)}${esc(t)}</b><span>${esc(d)}</span></button>`).join('')}</div></section>
   <section class="panel"><h2>من يفعل ماذا؟</h2><div class="scroll"><table><thead><tr><th>الدور</th><th>ماذا تفعل</th><th>كم من وقتها</th></tr></thead><tbody>
@@ -1641,6 +1694,26 @@ document.addEventListener('submit', async e => {
     S.dirty = false; toast(`حُفظ إعداد المشروع: ${list.length} مادة${added ? ' · أُضيف ' + added + ' رمز جديد' : ''}.`);
   } catch (x) { handleDbErr(x); } finally { btn.disabled = false; }
 });
+
+/* cycle form: show the right subject picker for the chosen way of working */
+document.addEventListener('change', e => { const t = e.target; if (!t.matches || !t.matches('input[name=cyMode]')) return; const f = t.closest('form'); const par = t.value === 'parallel'; f.querySelector('[data-mode-par]').hidden = !par; f.querySelector('[data-mode-single]').hidden = par; });
+
+/* parallel cycle: where each subject stands, at a glance */
+const SG_COLS = [
+  ['قياس قبلي', (c, sj) => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Baseline')],
+  ['V1', (c, sj) => inCyS(D.lessons, c, sj).some(l => (l.version || 1) === 1)],
+  ['ملاحظة V1', (c, sj) => inCyS(D.notes, c, sj).filter(n => n.context === 'in').length >= 3],
+  ['بعد الحصة', (c, sj) => inCyS(D.notes, c, sj).some(n => n.kind === OUT_KINDS[2])],
+  ['قرار', (c, sj) => inCy(D.decisions, c).some(d => d.evidence && d.subject === sj)],
+  ['V2', (c, sj) => inCyS(D.lessons, c, sj).some(l => (l.version || 1) >= 2)],
+  ['قياس بعدي', (c, sj) => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Post')]];
+function subjGrid(c) {
+  const mine = mySubject(); const subs = cySubj(c);
+  const rows = subs.map(sj => [sj, SG_COLS.map(([, fn]) => fn(c, sj))]);
+  const myRow = rows.find(r => r[0] === mine); const myNext = myRow ? SG_COLS[myRow[1].indexOf(false)] : null;
+  return `<div class="mini"><b class="small">أين وصلت كل مادة؟</b>${myRow ? `<span class="small">مادتك (${esc(mine)}): ${myNext ? 'الخطوة الناقصة التالية <b>' + esc(myNext[0]) + '</b>' : 'كل خطواتها مكتملة ✓'}</span>` : ''}
+  <div class="scroll"><table class="sgrid"><thead><tr><th>المادة</th>${SG_COLS.map(([l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>${rows.map(([sj, oks]) => `<tr class="${sj === mine ? 'mine' : ''}"><td>${subjChip(sj)}</td>${oks.map(ok => `<td>${ok ? '<span aria-label="مكتمل">✓</span>' : '<span class="muted" aria-label="لم يكتمل">○</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+}
 
 /* =========================================================
    9. Boot
