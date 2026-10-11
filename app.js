@@ -48,15 +48,15 @@ const LESSON_FIELDS = [
 
 /* The leader's playbook: what each phase is for, what to do, what counts as done. */
 const PHASES = [
- {n:'التشخيص',wk:'الأسبوع 1',goal:'نتفق على مشكلة تعلّم واحدة مشتركة تظهر في المقررات الأربعة.',
+ {n:'التشخيص',wk:'الأسبوع 1',goal:'نتفق على مشكلة تعلّم واحدة مشتركة تظهر في جميع المقررات المشاركة.',
   do:['كل معلمة تجمع 5–6 عينات أعمال من فصلها (بلا أسماء) وتدوّن نمط الصعوبة من «خارج الحصة».','اجتماع تشخيص: كل معلمة تعرض نمطها في 3 دقائق.','صياغة المشكلة المشتركة وسؤال الاستقصاء في «الإعداد».'],
   who:'كل الفريق · تقود القائدة الاجتماع',out:'مشكلة تعلّم مشتركة + سؤال استقصاء مهني',
-  ev:[['ملاحظات تشخيص من كل مقرر', c => [subjCount(inCy(D.notes, c).filter(n => n.context === 'out')), 4]],['اجتماع تشخيص مسجّل', c => [inCy(D.meetings, c).length, 1]],['قرار بصياغة المشكلة', c => [inCy(D.decisions, c).length, 1]],['المشكلة مكتوبة في الإعداد', () => [D.settings.learningProblem ? 1 : 0, 1]]],
+  ev:[['ملاحظات تشخيص من كل مقرر', c => [subjCount(inCy(D.notes, c).filter(n => n.context === 'out')),, Math.max(1, SUBJ.length)]],['اجتماع تشخيص مسجّل', c => [inCy(D.meetings, c).length, 1]],['قرار بصياغة المشكلة', c => [inCy(D.decisions, c).length, 1]],['المشكلة مكتوبة في الإعداد', () => [D.settings.learningProblem ? 1 : 0, 1]]],
   act:[['تدوين خارج الحصة','rec','out'],['تسجيل اجتماع','meet','meetings'],['تسجيل قرار','meet','decisions']]},
  {n:'جمع خط الأساس',wk:'الأسبوع 1',goal:'نقيس مستوى الطالبات قبل أي تدخل حتى نعرف لاحقًا ماذا تغيّر.',
   do:['مهمة قصيرة بنفس الفكرة مكيّفة لكل مقرر (10–15 دقيقة).','تصحيح كل عمل بمقياس 0–4 في المؤشرات الأربعة.','إدخال الدرجات برموز الطالبات من «دليل تعلّم» بنقطة «خط الأساس».'],
   who:'كل معلمة في فصلها',out:'درجات خط أساس مرمّزة لكل مقرر',
-  ev:[['مقررات لها خط أساس', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline')), 4]],['أدلة خط أساس (20 على الأقل)', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length, 20]]],
+  ev:[['مقررات لها خط أساس', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline')),, Math.max(1, SUBJ.length)]],['أدلة خط أساس (20 على الأقل)', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length, 20]]],
   act:[['إدخال دليل تعلّم','rec','evidence']]},
  {n:'التخطيط',wk:'الأسبوع 2',goal:'نحوّل نتائج خط الأساس إلى هدف ودرس بحث واضح.',
   do:['اجتماع تخطيط: ماذا أظهر خط الأساس؟','اختيار مقرر درس البحث والفصل الذي سيُنفَّذ فيه.','كتابة نواتج التعلّم والتوقعات ونقاط التعثّر.'],
@@ -101,7 +101,7 @@ const PHASES = [
  {n:'قياس الأثر',wk:'الأسبوع 5–6',goal:'نقيس الطالبات بعد الدورة ونقارن بخط الأساس.',
   do:['مهمة بعدية مكافئة لمهمة خط الأساس.','إدخال الدرجات بنقطة «بعد الدورة»، والاحتفاظ بعد 3–4 أسابيع.'],
   who:'كل معلمة في فصلها',out:'مقارنة قبل/بعد لكل مقرر',
-  ev:[['أدلة «بعد الدورة»', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Post').length, Math.max(1, inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length)]],['مقررات لها قياس بعدي', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Post')), 4]]],
+  ev:[['أدلة «بعد الدورة»', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Post').length, Math.max(1, inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length)]],['مقررات لها قياس بعدي', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Post')),, Math.max(1, SUBJ.length)]]],
   act:[['إدخال دليل تعلّم','rec','evidence'],['تقرير أثر الطالبات','report','impact']]},
  {n:'التأمل',wk:'الأسبوع 6',goal:'كل معلمة توثّق ما تغيّر في ممارستها، ثم نغلق الدورة بتقرير.',
   do:['تأمل «بعد الاجتماع» من كل معلمة.','إصدار «تقرير الدورة» ومناقشته.','تحديد مشكلة الدورة التالية.'],
@@ -305,7 +305,7 @@ V.home = () => {
   <div class="cols">
     <section class="panel"><h2>مهامي</h2><div class="ledger">${myTasks.length ? myTasks.slice(0, 6).map(taskRow).join('') : '<div class="empty">لا مهام مفتوحة لك. تُوزَّع المهام في نهاية كل اجتماع من «الاجتماعات والقرارات».</div>'}</div>
     ${nextMeeting ? `<div class="ok">الاجتماع القادم ${esc(nextMeeting.code)}: ${esc(fmtDate(nextMeeting.date))}${nextMeeting.goal ? ' — ' + esc(nextMeeting.goal) : ''}</div>` : '<div class="note">لا اجتماع قادم مسجّل. الإيقاع المقترح: اجتماع أسبوعي ثابت 45 دقيقة.</div>'}</section>
-    <section class="panel"><h2>المقررات الأربعة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>
+    <section class="panel"><h2>المقررات المشاركة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>
   </div>`;
 };
 function taskRow(t) {
@@ -357,7 +357,7 @@ V.evidenceForm = () => {
   ${evTabs()}<form class="panel" data-form="evidence">${ctxBlock(1)}
     <section class="stepsec">${stepHead(2, 'الطالبة ونقطة القياس', 'استخدمي رمز الطالبة الثابت نفسه في كل القياسات حتى نتتبع نموها.')}
     <div class="grid">${field('رمز الطالبة', inp('studentCode', '', 'placeholder="S014" required autocomplete="off"'), 'S ثم ثلاثة أرقام')}${field('نقطة القياس', `<select name="timePoint" id="f-timePoint">${opts(TIMEPOINTS)}</select>`)}${field('نوع الدليل', `<select name="evidenceType" id="f-evidenceType">${opts(['بطاقة خروج','منتج طالبة','إجابة شفهية','مهمة نقل','مهمة خط أساس/بعدية'])}</select>`)}${field('الدعم الذي احتاجته', `<select name="supportLevel" id="f-supportLevel">${opts(['بلا دعم','دعم 1: تلميح','دعم 2: بطاقة موجّهة','دعم 3: مثال محلول'])}</select>`)}</div></section>
-    <section class="stepsec">${stepHead(3, 'الدرجات', 'المقياس نفسه في المقررات الأربعة حتى تمكن المقارنة.')}
+    <section class="stepsec">${stepHead(3, 'الدرجات', 'المقياس نفسه في جميع المقررات المشاركة حتى تمكن المقارنة.')}
     <div class="grid">${INDICATORS.map(([k, l, d]) => field(l, sc(k), d)).join('')}</div>
     ${help('مقياس 0–4: كيف أصحّح؟', `<ul><li><b>0</b> لا يظهر المؤشر.</li><li><b>1 بداية:</b> محاولة غير صحيحة أو تكرار للمعلومة.</li><li><b>2 جزئي:</b> صحيح جزئيًا أو بعد دعم كبير.</li><li><b>3 واضح:</b> صحيح مع نقص بسيط أو بدعم خفيف.</li><li><b>4 متمكّن:</b> صحيح كامل ومستقل ومبرَّر.</li></ul><p>مثال (الفيزياء، التفسير): 2 = «السرعة تزيد» دون ربط بالميل · 4 = «الميل ثابت موجب، إذن السرعة تزيد بمقدار ثابت كل ثانية».</p>`)}
     <div class="grid">${field('استُخدم الذكاء الاصطناعي في المهمة؟', `<select name="aiUse" id="f-aiUse">${opts(['لا','نعم'])}</select>`)}${field('الأداة وإصدارها', `<select name="instrument" id="f-instrument">${opts(D.instruments.map(i => [i.code + '-' + i.version, i.code + ' ' + i.name + ' ' + i.version]), 'INS02-v0.1')}</select>`)}${field('ملاحظة (بلا أسماء)', inp('note'))}</div></section>
@@ -534,7 +534,7 @@ function buildReport(type, cy) {
       <h3>٩. تأملات المعلمات</h3>${rpTable(['المعلمة','ما تغيّر في ممارستي','ما سأغيّره','سؤال مفتوح'], N.filter(n => n.context === 'after').map(n => [esc(n.author), esc(n.change), esc(n.next), esc(n.openQuestion)]))}
       <h3>١٠. توصيات الدورة التالية</h3><p class="muted">تكتبها القائدة بعد مناقشة التقرير: ما الذي نستمر فيه؟ ما الذي نغيّره؟ ما مشكلة الدورة التالية؟</p>`;
   }
-  if (type === 'impact') { const E = cy_(D.evidence); return head('تقرير أثر الطالبات', 'ن = ' + E.length + ' دليل · ' + new Set(E.map(e => e.studentCode)).size + ' طالبة (برموز)') + `<h3>المتوسطات حسب المقرر ونقطة القياس</h3><div class="scroll">${impactTable(E)}</div><h3>قراءة الجدول</h3><ul><li>المقياس 0–4 موحّد في المقررات الأربعة (INS02).</li><li>يُقرأ التغيّر بحذر في وضع Pilot، ومع أعداد صغيرة.</li><li>المقارنة الأدق: الطالبة نفسها قبل وبعد (متوفرة في ملف Student_Evidence_Long).</li></ul>`; }
+  if (type === 'impact') { const E = cy_(D.evidence); return head('تقرير أثر الطالبات', 'ن = ' + E.length + ' دليل · ' + new Set(E.map(e => e.studentCode)).size + ' طالبة (برموز)') + `<h3>المتوسطات حسب المقرر ونقطة القياس</h3><div class="scroll">${impactTable(E)}</div><h3>قراءة الجدول</h3><ul><li>المقياس 0–4 موحّد في جميع المقررات المشاركة (INS02).</li><li>يُقرأ التغيّر بحذر في وضع Pilot، ومع أعداد صغيرة.</li><li>المقارنة الأدق: الطالبة نفسها قبل وبعد (متوفرة في ملف Student_Evidence_Long).</li></ul>`; }
   if (type === 'teachers') { const P = D.practice; const tags = code => { const f = {}; [...D.notes, ...D.ai].filter(r => r.author === code).forEach(r => (r.practices || []).forEach(p => { f[p] = (f[p] || 0) + 1; })); return f; };
     return head('تقرير نمو الممارسات المهنية', 'Rubric 1–4 + وسوم السجلات') + D.team.map(m => { const tg = tags(m.code); const rec = tp => (P.filter(p => p.teacher === m.code && p.measurePoint === tp).sort(byNewest)[0] || {}).scores || {}; return `<h3>${esc(m.code)} · ${esc(m.discipline || '')}</h3>${rpTable(['الممارسة','قبلي','منتصف','بعدي','ظهورها في السجلات'], PRACTICES.map(([k, l]) => [esc(l), rec('Baseline')[k] ?? '—', rec('Midpoint')[k] ?? '—', rec('Post')[k] ?? '—', tg[k] || 0]))}`; }).join(''); }
   if (type === 'ai') { const A = cy_(D.ai); const byMode = AI_MODES.map(m => [m, A.filter(a => a.mode === m)]).filter(x => x[1].length);
@@ -591,7 +591,7 @@ V.playbook = () => {
   if (t === 'design') body = `<section class="panel"><h2>التصميم المقترح لتصلح البيانات للرسالة</h2><p class="lede small">اقتراح للنقاش مع المشرف ولجنة الأخلاقيات، والقرار النهائي لكِ.</p>${T(['القرار','المقترح','السبب'], [
     ['عدد الدورات','دورة Pilot واحدة الآن + 3 دورات Formal بعد الموافقات (5–6 أسابيع لكل دورة)','سؤال تطور الممارسات (RQ3) يحتاج 3 نقاط زمنية على الأقل؛ والـPilot يختبر الأدوات ولا يدخل الرسالة'],
     ['دروس البحث','درس بحث واحد مشترك في كل دورة: V1 تنفذه معلمة، وV2 تعيد تطبيقه معلمة من مقرر آخر','هذا جوهر بحث الدرس، ويُظهر أثر القرار المبني على الدليل'],
-    ['المقررات','درس البحث يتنقل: الدورة 1 فيزياء، 2 رياضيات، 3 كيمياء أو تقنية رقمية؛ وكل معلمة تطبّق الاستراتيجية في فصلها كل دورة','أدلة الطالبات من المقررات الأربعة، ومقارنة بين التخصصات'],
+    ['المقررات','درس البحث يتنقل: الدورة 1 فيزياء، 2 رياضيات، 3 كيمياء أو تقنية رقمية؛ وكل معلمة تطبّق الاستراتيجية في فصلها كل دورة','أدلة الطالبات من جميع المقررات المشاركة، ومقارنة بين التخصصات'],
     ['ما نقيسه','المهارة المشتركة لا محتوى الدرس: التفسير، النقل، الاستقلالية، التحقق بمقياس 0–4 موحّد','يسمح بالمقارنة عبر المقررات وعبر الزمن'],
     ['الطالبات','الفصول نفسها والطالبات أنفسهن طوال الدراسة، برموز ثابتة S001…','تتبّع نمو الطالبة نفسها (بيانات طولية)'],
     ['المرحلة','مرحلة دراسية واحدة، ويفضّل صف تدرّس طالباته المعلمات الأربع (تحقّقي من ذلك في مدرستك)','إثبات انتقال المهارة عبر المقررات لدى الطالبات أنفسهن'],
@@ -624,7 +624,7 @@ V.playbook = () => {
     ['تأمل','كل معلمة','بعد كل اجتماع','6 أسئلة','سجّلي ← بعد الاجتماع','RQ3 · RQ5'],
     ['قياس الممارسات','الباحثة','قبلي/منتصف/بعدي','10 ممارسات × 1–4','البحث ← قياس الممارسات','RQ1']])}</section>`;
   if (t === 'reports') body = `<section class="panel"><h2>التقارير</h2>${T(['التقرير','الجمهور','التكرار','المحتوى'], REPORTS.map(r => [`<b>${esc(r[1])}</b>`, esc(r[2].split(' · ')[0]), esc(r[2].split(' · ')[1] || ''), esc(r[3])]))}<div><button class="btn" data-act="nav" data-view="reports">افتحي التقارير</button></div></section>`;
-  if (t === 'quality') body = `<section class="panel"><h2>معايير جودة العمل والبيانات</h2><ul class="checklist">${['كل سجل له مقرر وفصل ودرس ودورة.','كل ملاحظة تصف ما حدث للطالبة، لا حكمًا على المعلمة.','كل قرار مكتوب مع دليله وبدائله وسببه.','كل تعديل على الدرس نسخة جديدة مرتبطة بقرار.','كل استخدام جوهري لـ AI محفوظ بنصّيه وقرار المعلمة.','رمز الطالبة ثابت في كل القياسات.','لا أسماء في أي حقل.','الدرجات بالمقياس نفسه في المقررات الأربعة.','يمكن رواية قصة أي دورة من البداية للنهاية من تقرير الدورة.'].map(x => `<li><span class="tick y" aria-hidden="true">✓</span><span>${esc(x)}</span></li>`).join('')}</ul></section>`;
+  if (t === 'quality') body = `<section class="panel"><h2>معايير جودة العمل والبيانات</h2><ul class="checklist">${['كل سجل له مقرر وفصل ودرس ودورة.','كل ملاحظة تصف ما حدث للطالبة، لا حكمًا على المعلمة.','كل قرار مكتوب مع دليله وبدائله وسببه.','كل تعديل على الدرس نسخة جديدة مرتبطة بقرار.','كل استخدام جوهري لـ AI محفوظ بنصّيه وقرار المعلمة.','رمز الطالبة ثابت في كل القياسات.','لا أسماء في أي حقل.','الدرجات بالمقياس نفسه في جميع المقررات المشاركة.','يمكن رواية قصة أي دورة من البداية للنهاية من تقرير الدورة.'].map(x => `<li><span class="tick y" aria-hidden="true">✓</span><span>${esc(x)}</span></li>`).join('')}</ul></section>`;
   if (t === 'who') body = `<section class="panel"><h2>من يملأ ماذا في المنصة</h2><p class="lede small">ليس كل جزء يملؤه الجميع. كل عضوة تسجّل ما يخصها، والقائدة تراجع وتعتمد. ✓ = تستطيع الكتابة فيه.</p>${T(['القسم','يملؤه','يراجعه أو يشارك','القائدة','المعلمة المشاركة','الباحثة','الملاحِظة'], WHO.map(r => r.map((x, i) => i === 0 ? `<b>${esc(x)}</b>` : esc(x))))}<div class="note">صلاحيات المنصة نفسها تُضبط من قائمة المشاركة: شاركيها مع المعلمات بصلاحية «استخدام» لا «تحرير»، فيستطعن التسجيل ولا يستطعن تغيير الإعداد أو نقل مراحل الدورة. وأدوار الفريق تُحدَّد في «الإعداد».</div></section>`;
   if (t === 'm365') body = `<section class="panel"><h2>هل تحتاجين Power Apps؟</h2><p class="lede">لا يوجد ربط مباشر ومتزامن بين بُرهان وPower Apps، لأن بيانات بُرهان محفوظة داخل Claude. لديكِ مساران، والأهم ألّا يعمل الفريق في نظامين معًا.</p>${T(['','المسار أ: البقاء في بُرهان','المسار ب: الانتقال إلى Microsoft 365'], [['متى يناسب؟','الآن وفي الدورة التجريبية؛ إذا كان لدى الفريق حسابات Claude','إذا اشترطت المدرسة أو الوزارة بقاء البيانات في Teams وSharePoint'],['الذكاء الاصطناعي','Claude داخل الاستوديو مع المقارنة التلقائية','Copilot خارج التطبيق، ويُلصق النص يدويًا في القائمة'],['التقارير والتحليل','جاهزة داخل المنصة','تُبنى في Power BI'],['الجهد','لا شيء إضافي','نحو أسبوعين لبناء القوائم والتطبيق والتدفقات']])}</section>
   <section class="panel"><h2>خطوات الانتقال إلى Microsoft 365 (المسار ب)</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:8px">
@@ -644,13 +644,14 @@ V.playbook = () => {
 /* ---- Setup ---- */
 V.setup = () => {
   const me = myMember(); const st = D.settings; const ed = S.canEdit; const unlinked = D.team.filter(m => !m.userId);
-  return `<div><h1>الإعداد</h1><p class="lede">خمس خطوات تُنجز مرة واحدة. ${ed ? '' : 'بعض الإعدادات متاحة لصاحبة المنصة فقط.'}</p></div>
+  return `<div><h1>الإعداد</h1><p class="lede">إعداد يُنجز مرة واحدة: المرحلة والمواد والفريق والفصول والدورة. ${ed ? '' : 'بعض الإعدادات متاحة لصاحبة المنصة فقط.'}</p></div>
+  ${typeof projectWizard === 'function' ? projectWizard() : ''}
   <section class="panel">${stepHead(1, 'اربطي حسابك برمزك', 'يُحفظ عملك برمزك (مثل T02) لا باسمك.')}${me ? `<div class="ok">حسابك مرتبط بالرمز ${esc(me.code)} · ${esc(me.discipline || '')} · ${esc(me.role || '')}</div><div><button class="btn ghost small" data-act="unlink">فك الارتباط</button></div>` : (S.uid ? `<div class="row">${unlinked.map(m => `<button class="btn ghost" data-act="link" data-id="${esc(m._id)}">أنا ${esc(m.code)} · ${esc(m.discipline || '')}</button>`).join('') || '<span class="muted">كل الرموز مرتبطة. أضيفي عضوة في الخطوة 3.</span>'}</div>` : '<div class="note">تعذّر التعرف على حسابك في هذا العرض.</div>')}</section>
   <form class="panel" data-form="settings">${stepHead(2, 'المشروع ومشكلة التعلّم', 'تظهر المشكلة في كل الصفحات وتُضمَّن في طلبات الذكاء الاصطناعي.')}<fieldset ${ed ? '' : 'disabled'} style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:12px">
     <div class="grid">${field('اسم المشروع', inp('projectName', st.projectName || 'بُرهان'))}${field('المدرسة', inp('school', st.school))}${field('الدورة الحالية', `<select name="currentCycle" id="f-currentCycle">${opts(D.cycles.map(c => c.code), st.currentCycle, '—')}</select>`)}${field('وضع البيانات', `<select name="studyPhase" id="f-studyPhase">${opts([['Pilot','Pilot · تجريبي'],['Formal','Formal · الدراسة الرسمية']], st.studyPhase || 'Pilot')}</select>`, 'Formal بعد الموافقة الأخلاقية فقط')}</div>
     <div class="grid wide">${field('مشكلة التعلّم المشتركة', area('learningProblem', st.learningProblem, 'placeholder="مثال: تقدّم الطالبات إجابات صحيحة إجرائيًا دون القدرة على تفسير خطواتهن أو نقلها لموقف جديد"'))}${field('سؤال الاستقصاء المهني', area('inquiryQuestion', st.inquiryQuestion, 'placeholder="مثال: كيف نصمّم دعمًا متمايزًا ينقل الطالبة من الإجراء إلى التفسير والنقل؟"'))}${field('الهدف بعيد المدى', area('goal', st.goal, 'placeholder="مثال: طالبات يفسّرن تفكيرهن ويتحققن منه باستقلالية عبر المقررات"'))}${field('مرجع الموافقة الأخلاقية', inp('ethicsRef', st.ethicsRef))}</div>
     <div class="row"><button class="btn" type="submit">حفظ</button></div></fieldset></form>
-  <section class="panel">${stepHead(3, 'الفريق', 'رموز المعلمات وتخصصاتهن وأدوارهن.')}<div class="scroll"><table><thead><tr><th>الرمز</th><th>التخصص</th><th>الدور</th><th>مرتبط بحساب</th></tr></thead><tbody>${D.team.slice().sort((a, b) => a.code.localeCompare(b.code)).map(m => `<tr><td><b>${esc(m.code)}</b></td><td>${subjChip(m.discipline) || esc(m.discipline)}</td><td>${ed ? `<select data-role="${esc(m._id)}" aria-label="دور ${esc(m.code)}">${opts(['قائدة المشروع','معلمة مشاركة','باحثة','ملاحِظة درس'], m.role)}</select>` : esc(m.role)}</td><td>${m.userId ? 'نعم' : '—'}</td></tr>`).join('')}</tbody></table></div>
+  <section class="panel">${stepHead(3, 'الفريق', 'رموز المعلمات وتخصصاتهن وأدوارهن.')}<div class="scroll"><table><thead><tr><th>الرمز</th><th>التخصص</th><th>الدور</th><th>مرتبط بحساب</th></tr></thead><tbody>${D.team.slice().sort((a, b) => a.code.localeCompare(b.code)).map(m => `<tr><td><b>${esc(m.code)}</b></td><td>${ed ? `<select data-disc="${esc(m._id)}" aria-label="تخصص ${esc(m.code)}">${opts([...SUBJ.map(s => s.n), 'أخرى'], m.discipline)}</select>` : (subjChip(m.discipline) || esc(m.discipline))}</td><td>${ed ? `<select data-role="${esc(m._id)}" aria-label="دور ${esc(m.code)}">${opts(['قائدة المشروع','معلمة مشاركة','باحثة','ملاحِظة درس'], m.role)}</select>` : esc(m.role)}</td><td>${m.userId ? 'نعم' : '—'}</td></tr>`).join('')}</tbody></table></div>
     ${ed ? `<form data-form="member" class="grid">${field('تخصص العضوة الجديدة', `<select name="discipline" id="f-discipline">${opts([...SUBJ.map(s => s.n), 'أخرى'])}</select>`)}${field('الدور', `<select name="role" id="f-role">${opts(['معلمة مشاركة','قائدة المشروع','باحثة','ملاحِظة درس'])}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة عضوة</button></div></form>` : ''}</section>
   <section class="panel">${stepHead(4, 'الفصول', 'اسم الفصل وعدد طالباته لكل مقرر. يُحفظان تلقائيًا مع كل سجل.')}<div class="ledger">${SUBJ.map(s => { const cl = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cl.length} فصل</span></div><div class="row">${cl.map(x => `<span class="chip ${x.classRole === 'comparison' ? 'warn' : 'plain'}">${esc(x.name)} · ${esc(x.count)} طالبة${x.teacher ? ' · ' + esc(x.teacher) : ''}${x.classRole === 'comparison' ? ' · مقارنة' : ''}</span>`).join('') || '<span class="small muted">لا فصول بعد</span>'}</div></div>`; }).join('')}</div>
     <form data-form="class" class="grid">${field('المقرر', `<select name="subject" id="f-csubject">${opts(SUBJ.map(s => s.n), mySubject())}</select>`)}${field('اسم الفصل', inp('name', '', 'placeholder="2/3 علمي" required'))}${field('عدد الطالبات', inp('count', '', 'type="number" min="1" max="60" inputmode="numeric" required'))}${field('الصف', inp('grade', '', 'placeholder="الثاني الثانوي"'))}${field('نوع الشعبة', `<select name="classRole" id="f-classRole">${opts([['intervention','تدخّل'],['comparison','مقارنة (تُقاس فقط)']])}</select>`)}${field('المعلمة', `<select name="teacher" id="f-cteacher">${opts(D.team.map(m => m.code), myCode())}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة الفصل</button></div></form></section>
@@ -661,7 +662,7 @@ V.setup = () => {
 /* =========================================================
    5b. Dashboard, analysis, library, attachments, minutes
    ========================================================= */
-const SUBJ_VAR = {dt:'--c-dt', math:'--c-math', chem:'--c-chem', phys:'--c-phys'};
+const SUBJ_VAR = {dt:'--c-dt', math:'--c-math', chem:'--c-chem', phys:'--c-phys', p1:'--p1', p2:'--p2', p3:'--p3', p4:'--p4', p5:'--p5', p6:'--p6', p7:'--p7', p8:'--p8'};
 const sv = n => 'var(' + (SUBJ_VAR[(SUBJ_BY_NAME[n] || {}).k] || '--accent') + ')';
 const TPV = ['var(--q1)','var(--q2)','var(--q3)','var(--q4)'];
 const LV = ['var(--l0)','var(--l1)','var(--l2)','var(--l3)','var(--l4)'];
@@ -1047,6 +1048,7 @@ document.addEventListener('change', e => {
   if (t.matches('[data-classfor]')) toggleNewClass(t);
   if (t.id === 'cmpA' || t.id === 'cmpB') { const a = lessonOf($('#cmpA').value), b = lessonOf($('#cmpB').value); $('#cmpOut').innerHTML = a && b ? (() => { const d = diff(lessonText(a), lessonText(b)); return `<p class="small muted">الأخضر: أُضيف في ${esc(b._id)} · الأحمر: حُذف من ${esc(a._id)}</p><div class="diff">${d.html}</div>`; })() : '<div class="empty">اختاري نسختين.</div>'; }
   if (t.id === 'repCycle') $('#repOut').innerHTML = buildReport(S.repType, t.value);
+  if (t.matches('[data-disc]')) { S.db && S.db.collection('team').doc(t.dataset.disc).update({discipline: t.value}).then(() => toast('حُدّث التخصص.')).catch(handleDbErr); }
   if (t.matches('[data-role]')) { S.db && S.db.collection('team').doc(t.dataset.role).update({role: t.value}).then(() => toast('حُدّث الدور.')).catch(handleDbErr); }
   if (t.name === 'decision' && t.form) t.form.dataset.decTouched = '1';
 });
@@ -1421,6 +1423,7 @@ V.home = () => {
   const myTasks = D.tasks.filter(t => t.status !== 'done' && (!me || t.owner === me.code || t.owner === 'الفريق')).sort((a, b) => String(a.due).localeCompare(String(b.due)));
   const nextMeeting = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
   return `<div><h1>${me ? 'أهلًا ' + esc(me.code) : 'ماذا أفعل الآن؟'}</h1><p class="lede">${me ? esc(me.discipline || '') + ' · ' + esc(me.role || '') + '. ' : ''}هنا ما يلزمكِ اليوم: أين وصل الفريق، وخطوتكِ التالية، وأين تسجّلينها.</p></div>
+  ${introCard()}
   ${linkChooser()}
   ${accessPanel()}
   ${lead && !setupDone ? `<section class="panel"><h2>إعداد المنصة (مرة واحدة)</h2><ul class="checklist">${st.map(([t, ok]) => `<li><span class="tick ${ok ? 'y' : 'n'}" aria-hidden="true">${ok ? '✓' : ''}</span><span>${esc(t)}</span></li>`).join('')}</ul><div><button class="btn" data-act="nav" data-view="setup">أكملي الإعداد</button></div></section>` : ''}
@@ -1434,7 +1437,7 @@ V.home = () => {
   <div class="cols">
     <section class="panel"><h2>مهامي</h2><div class="ledger">${myTasks.length ? myTasks.slice(0, 6).map(taskRow).join('') : '<div class="empty">لا مهام مفتوحة لكِ. تُوزَّع المهام في نهاية كل اجتماع.</div>'}</div>
     ${nextMeeting ? `<div class="ok">الاجتماع القادم ${esc(nextMeeting.code)}: ${esc(fmtDate(nextMeeting.date))}${nextMeeting.goal ? ' — ' + esc(nextMeeting.goal) : ''}</div>` : '<div class="note">لا اجتماع قادم مسجّل. الإيقاع المقترح: اجتماع أسبوعي ثابت 45 دقيقة.</div>'}</section>
-    ${lead ? `<section class="panel"><h2>المقررات الأربعة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>` : ''}
+    ${lead ? `<section class="panel"><h2>المقررات المشاركة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>` : ''}
   </div>`;
 };
 
@@ -1542,6 +1545,101 @@ document.addEventListener('click', async e => {
   if (act === 'live-rm') { const L = live(); L[b.dataset.k].splice(Number(b.dataset.i), 1); liveSave(); render(); }
   if (act === 'live-cancel') { if (S.liveArm !== 1) { S.liveArm = 1; b.textContent = 'اضغطي مرة أخرى لتأكيد الإلغاء'; setTimeout(() => { S.liveArm = 0; }, 4000); return; } S.liveArm = 0; S.live = liveNew(); store.del('live'); render(); toast('أُلغي الاجتماع ولم يُحفظ شيء.'); }
   if (act === 'live-save') { b.disabled = true; await liveSaveAll(); b.disabled = false; }
+});
+
+/* ---- About: what Burhan is, why, and how to work with it ---- */
+ICONS.about = '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>';
+NAV[0][1].unshift(['about', 'ما هو بُرهان؟']); VIEW_KEYS.unshift('about');
+const ABOUT_FLOW = [
+  ['1', 'نشخّص', 'كل معلمة تجمع عينات من أعمال طالباتها، ونتفق في اجتماع على مشكلة تعلّم واحدة مشتركة بين المقررات.'],
+  ['2', 'نقيس قبل', 'مهمة قصيرة لكل فصل تُصحَّح بمقياس 0–4، فنعرف مستوى الطالبات قبل أي تغيير.'],
+  ['3', 'نصمّم معًا', 'نكتب درسًا بحثيًا متمايزًا (مستويات دعم أ/ب/ج)، ونستعين بالذكاء الاصطناعي ونوثّق ما قبلناه وما غيّرناه ولماذا.'],
+  ['4', 'نلاحظ الطالبات', 'معلمة تدرّس والبقية يلاحظن تعلّم الطالبات (لا أداء المعلمة)، ويسجّلن اللحظات من «ملاحظة حصة».'],
+  ['5', 'نحلّل ونقرّر', 'اجتماع 45 دقيقة: ماذا تقول الأدلة؟ ماذا نغيّر؟ كل قرار مربوط بدليل، وكل قرار له مهمة.'],
+  ['6', 'نعيد ونقيس بعد', 'نطبّق النسخة المحسّنة، ثم نقيس الطالبات مرة أخرى ونقارن بالبداية، وتكتب كل معلمة تأملها.']];
+const ABOUT_WHEN = [
+  ['eye', 'أثناء الحصة', 'وأنتِ تلاحظين درسًا بحثيًا: من الطالبة؟ ماذا حدث؟ أي دعم؟', 'in'],
+  ['notes', 'خارج الحصة', 'وأنتِ تخططين أو تصححين أو تجربين شيئًا في فصلك.', 'out'],
+  ['evidence', 'درجات الطالبات', 'بعد تصحيح مهمة القياس: الفصل كاملًا في جدول واحد.', 'evidence'],
+  ['meetings', 'في الاجتماع', 'القائدة تدير الاجتماع من «اجتماع الآن» فيُحفظ المحضر والقرارات والمهام.', 'meet'],
+  ['refl', 'بعد الاجتماع', 'ثلاث جمل خلال 24 ساعة: ماذا لاحظتُ، ماذا تعلّمتُ، ماذا سأغيّر.', 'after'],
+  ['ai', 'مع الذكاء الاصطناعي', 'عند تصميم الدرس أو تعديله: الصقي ما كتبه AI وما اعتمدتِه، فتظهر الفروق وسببها.', 'ai']];
+V.about = () => `<div><h1>ما هو بُرهان؟</h1><p class="lede">منصة عمل لمجتمع تعلّم مهني من معلمين ومعلمات من تخصصات مختلفة يطوّرون معًا تدريسًا متمايزًا عبر <b>بحث الدرس</b>، بمساندة الذكاء الاصطناعي، ويحفظن كل خطوة دليلًا.</p></div>
+  <section class="panel hero"><span class="kicker">الفكرة في سطرين</span><h2 style="font-size:22px">دليلٌ على التعلّم، وقرارٌ مبنيٌّ على الدليل</h2><p>لا نغيّر الدرس لأننا «نشعر» أنه أفضل، بل لأن أعمال الطالبات تقول ذلك. وبُرهان يجمع هذه الأدلة في مكان واحد: ماذا رأينا، ماذا قررنا، ماذا اقترح الذكاء الاصطناعي وماذا اخترنا، وماذا تغيّر عند الطالبات.</p></section>
+  <section class="panel"><h2>لماذا؟ الأهداف</h2><div class="grid">${[['للطالبات', 'أن تنتقل الطالبة من حل الخطوات إلى تفسيرها ونقلها لموقف جديد، كلٌّ حسب مستواها.'], ['للمعلمات', 'تطوير ممارسات التعليم المتمايز والحكم المهني عبر عمل جماعي حقيقي داخل الصف، لا دورات منفصلة.'], ['للذكاء الاصطناعي', 'استخدامه مساعدًا يقترح، والقرار للمعلمة دائمًا، مع توثيق ما قُبل وما عُدّل وما رُفض.'], ['للمدرسة والبحث', 'نموذج موثّق قابل للتطبيق في مدارس أخرى، وبيانات منظمة تخدم دراسة علمية.']].map(([t, d]) => `<div class="mini"><b>${esc(t)}</b><span class="small">${esc(d)}</span></div>`).join('')}</div></section>
+  <section class="panel"><h2>كيف نعمل؟ دورة بحث الدرس (نحو 6 أسابيع)</h2><p class="small muted">الدورة الكاملة 12 مرحلة، وهذه هي الخطوات الكبرى. الصفحة الرئيسة تخبركِ دائمًا في أي مرحلة نحن وما المطلوب الآن.</p>
+  <div class="ledger">${ABOUT_FLOW.map(([n, t, d]) => `<div class="rec"><div class="stephead"><span class="n">${n}</span><div><h3>${esc(t)}</h3><p>${esc(d)}</p></div></div></div>`).join('')}</div></section>
+  <section class="panel"><h2>ماذا أسجّل، ومتى؟</h2><div class="grid">${ABOUT_WHEN.map(([ic, t, d, go]) => `<button class="action" data-act="${go === 'ai' ? 'nav' : (go === 'meet' ? 'go-meet' : 'go-rec')}" data-view="${go === 'ai' ? 'ai' : 'meetings'}" data-t="${go === 'meet' ? 'live' : go}"><b>${icon(ic)}${esc(t)}</b><span>${esc(d)}</span></button>`).join('')}</div></section>
+  <section class="panel"><h2>من يفعل ماذا؟</h2><div class="scroll"><table><thead><tr><th>الدور</th><th>ماذا تفعل</th><th>كم من وقتها</th></tr></thead><tbody>
+    <tr><td><b>قائدة المشروع</b></td><td>تدير الاجتماع الأسبوعي من «اجتماع الآن»، تنقل الدورة من مرحلة لأخرى، تقبل انضمام المعلمات، تتابع الفريق من الصفحة الرئيسة، وتصدّر البيانات أسبوعيًا.</td><td>ساعة ونصف أسبوعيًا تقريبًا</td></tr>
+    <tr><td><b>المعلمة المشاركة</b></td><td>تحضر الاجتماع، تجمع أعمال طالباتها وتدخل درجاتها، تلاحظ الدرس البحثي، وتكتب تأملها بعد كل اجتماع.</td><td>45 دقيقة اجتماع + 20–30 دقيقة تسجيل</td></tr>
+    <tr><td><b>معلمة الدرس البحثي</b></td><td>تدرّس الدرس الذي صممه الفريق، وتسجّل ما حدث من «خارج الحصة».</td><td>مرة في كل دورة</td></tr>
+  </tbody></table></div></section>
+  <section class="panel"><h2>قواعد ثابتة</h2><ul class="checklist">${['لا أسماء أبدًا: المعلمات برموز (T01…) والطالبات برموز (S001…). ملف الربط بالأسماء عند القائدة خارج المنصة.', 'نلاحظ تعلّم الطالبات، ولا نقيّم المعلمة. لا تُستخدم أي بيانات في التقييم الوظيفي.', 'الذكاء الاصطناعي يقترح، والمعلمة تقرر. ولا تُدخل فيه أي بيانات تعرّف بطالبة.', 'كل قرار يحتاج دليلًا: رقمًا أو رمز سجل، لا انطباعًا.'].map(t => `<li><span class="tick y" aria-hidden="true">✓</span><span>${esc(t)}</span></li>`).join('')}</ul></section>
+  <section class="panel"><h2>أول خمس دقائق لكِ</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:6px"><li>من الصفحة الرئيسة اضغطي رمزك في «من أنتِ في الفريق؟».</li><li>افتحي «سجّلي» ← «خارج الحصة»، واختاري مقررك وفصلك (يُحفظان بعدها تلقائيًا).</li><li>اكتبي ملاحظة قصيرة عن أعمال طالباتك واحفظي.</li><li>ارجعي للصفحة الرئيسة: ستجدين المرحلة الحالية وخطوتك التالية ومهامك.</li><li>على الجوال: استخدمي الشريط السفلي (الآن · سجّلي · ملاحظة حصة · الاجتماع).</li></ol>
+  <div class="row"><button class="btn" data-act="nav" data-view="home">ابدئي من الصفحة الرئيسة</button><button class="btn ghost" data-act="nav" data-view="playbook">دليل القيادة المفصّل</button></div></section>`;
+function introCard() {
+  if (store.get('introSeen', false)) return '';
+  return `<section class="panel" style="border-color:var(--accent)"><div class="row between"><h2>أهلًا بكِ في بُرهان</h2><button class="btn ghost small" data-act="intro-hide">فهمت، أخفِ هذا</button></div>
+  <p>منصة يعمل فيها فريق من تخصصات مختلفة على <b>بحث الدرس</b>: نشخّص مشكلة تعلّم، نصمّم درسًا متمايزًا معًا، نلاحظ الطالبات، ونقرر بالأدلة، بمساندة الذكاء الاصطناعي.</p>
+  <div class="grid"><div class="mini"><b class="small">ما المطلوب منكِ؟</b><span class="small">اجتماع أسبوعي، وتسجيل قصير: ملاحظاتك، درجات طالباتك، وتأملك بعد الاجتماع.</span></div><div class="mini"><b class="small">أين أبدأ؟</b><span class="small">البطاقة الخضراء أدناه تخبركِ بالمرحلة الحالية وخطوتك التالية.</span></div><div class="mini"><b class="small">الخصوصية</b><span class="small">رموز فقط: T للمعلمات وS للطالبات، بلا أي أسماء.</span></div></div>
+  <div><button class="btn small" data-act="nav" data-view="about">اقرئي الشرح كاملًا (3 دقائق)</button></div></section>`;
+}
+document.addEventListener('click', e => { const b = e.target.closest('button[data-act="intro-hide"]'); if (!b) return; store.set('introSeen', true); render(); });
+
+/* ---- Any school, any subjects: stage, subjects and team size come from project settings ---- */
+const SUBJ_CATALOG = [
+  ['الرياضيات', 'math', 'حل المعادلات', 'حلّت المجموعة المعادلة إجرائيًا، وعند سؤالها «لماذا هذه الخطوة؟» لم تربطها بالمفهوم.'],
+  ['الفيزياء', 'phys', 'تفسير منحنيات السرعة–الزمن', 'قرأت الطالبة الميل رقمًا ولم تفسّره معدل تغيّر للسرعة إلا بعد تلميح.'],
+  ['الكيمياء', 'chem', 'سرعة التفاعل الكيميائي', 'فسّرت الطالبة أثر الحرارة على سرعة التفاعل، لكنها لم تنقل التفسير إلى أثر التركيز.'],
+  ['التقنية الرقمية', 'dt', 'تصميم خوارزمية لحل مشكلة', 'كتبت الطالبة خطوات الخوارزمية صحيحة لكنها لم تفسّر ترتيب الشرط قبل التكرار.'],
+  ['العلوم', '', 'الدورة المائية', 'وصفت الطالبة مراحل الدورة بالترتيب، لكنها لم تفسّر سبب التكاثف.'],
+  ['الأحياء', '', 'انقسام الخلية', 'سمّت المراحل صحيحة، ولم تربط ما يحدث للكروموسومات بالنتيجة.'],
+  ['علم الأرض والفضاء', '', 'الصفائح التكتونية', 'حدّدت نوع الحد بين الصفيحتين، ولم تفسّر سبب الزلازل عنده.'],
+  ['اللغة العربية', '', 'تحليل نص أدبي', 'استخرجت الطالبة الصورة البلاغية، ولم تفسّر أثرها في المعنى.'],
+  ['اللغة الإنجليزية', '', 'Reading for main idea', 'اختارت الطالبة الفكرة الرئيسة صحيحة، ولم تبرّرها بدليل من النص.'],
+  ['الدراسات الإسلامية', '', 'استنباط حكم من دليل', 'ذكرت الطالبة الحكم، ولم توضّح وجه الدلالة من الدليل.'],
+  ['الدراسات الاجتماعية', '', 'قراءة خريطة', 'حدّدت الموقع على الخريطة، ولم تفسّر أثره على النشاط الاقتصادي.'],
+  ['المهارات الحياتية', '', 'إدارة الميزانية', 'حسبت الطالبة المصروفات، ولم تبرّر أولويات الإنفاق.'],
+  ['التفكير الناقد', '', 'تقييم حجة', 'حدّدت الطالبة النتيجة، ولم تميّز المقدمات الضعيفة.'],
+  ['التربية الفنية', '', 'تحليل عمل فني', 'وصفت الألوان المستخدمة، ولم تربطها بالفكرة التي يعبّر عنها العمل.'],
+  ['التربية البدنية', '', 'مهارة التمرير', 'أدّت المهارة صحيحة، ولم تفسّر متى تختار التمرير القصير.']];
+const STAGES = ['ابتدائية', 'متوسطة', 'ثانوية'];
+const DEFAULT_SUBJ = ['التقنية الرقمية', 'الرياضيات', 'الكيمياء', 'الفيزياء'];
+const projSubjects = () => { const l = D.settings.subjects; return Array.isArray(l) && l.length ? l : DEFAULT_SUBJ; };
+let subjSig = '';
+function applySubjects() {
+  const list = projSubjects(); const sig = list.join('|'); if (sig === subjSig) return; subjSig = sig;
+  let slot = 0; const fixed = new Set(['dt', 'math', 'chem', 'phys']);
+  const out = list.map(n => { const c = SUBJ_CATALOG.find(x => x[0] === n); let k = c && c[1] && fixed.has(c[1]) ? c[1] : ''; if (!k) { slot = slot % 8 + 1; k = 'p' + slot; } return {k, n, ex: c ? c[2] : 'عنوان الدرس', obs: c ? c[3] : 'وصفت الطالبة ما فعلته، ولم تفسّر لماذا اختارت هذه الطريقة.'}; });
+  SUBJ.length = 0; out.forEach(x => SUBJ.push(x));
+  Object.keys(SUBJ_BY_NAME).forEach(k => delete SUBJ_BY_NAME[k]); SUBJ.forEach(x => { SUBJ_BY_NAME[x.n] = x; });
+}
+const renderNavCore = renderNav;
+renderNav = function () { applySubjects(); renderNavCore(); };
+function projectWizard() {
+  if (!S.canEdit && !window.burhanIsOwner) return '';
+  const st = D.settings; const chosen = new Set(projSubjects()); const extra = projSubjects().filter(n => !SUBJ_CATALOG.some(c => c[0] === n));
+  return `<form class="panel hero" data-form="project"><span class="kicker">إعداد المشروع لمدرستك</span><h2>المرحلة والمواد وعدد المشاركين</h2>
+  <p class="small muted">بُرهان يعمل مع أي مرحلة وأي تخصصات. ما تختارينه هنا يظهر في كل الصفحات: اختيار المادة في التسجيل، والألوان، والتقارير، واكتمال المراحل.</p>
+  <div><div class="hint" style="margin-bottom:6px">المرحلة</div>${chipRadios('stage', STAGES, st.stage || 'ثانوية')}</div>
+  <div class="grid">${field('الصف المستهدف', inp('grade', st.grade || '', 'placeholder="مثال: الأول الثانوي"'))}${field('عدد المشاركين في الفريق', inp('teamSize', st.teamSize || D.team.length || 4, 'type="number" min="2" max="30" inputmode="numeric"'), 'تُنشأ رموز T01، T02… بهذا العدد')}</div>
+  <div><div class="hint" style="margin-bottom:6px">المواد المشاركة (اختاري ما ينطبق)</div><div class="checks">${SUBJ_CATALOG.map(([n]) => `<label><input type="checkbox" name="subj" value="${esc(n)}"${chosen.has(n) ? ' checked' : ''}>${esc(n)}</label>`).join('')}${extra.map(n => `<label><input type="checkbox" name="subj" value="${esc(n)}" checked>${esc(n)}</label>`).join('')}</div></div>
+  ${field('مادة غير موجودة في القائمة؟', inp('customSubj', '', 'placeholder="اكتبيها، ويمكن أكثر من مادة بينها فاصلة"'))}
+  <div class="row"><button class="btn" type="submit">حفظ إعداد المشروع</button><span class="small muted">بعد الحفظ حدّدي تخصص كل رمز من جدول «الفريق» أدناه.</span></div></form>`;
+}
+document.addEventListener('submit', async e => {
+  const f = e.target.closest('form[data-form="project"]'); if (!f) return; e.preventDefault(); if (!S.db) return;
+  const subj = $$('input[name=subj]:checked', f).map(x => x.value).concat(String(f.customSubj.value || '').split(/[،,]/).map(x => x.trim()).filter(Boolean));
+  const list = [...new Set(subj)]; if (list.length < 1) { toast('اختاري مادة واحدة على الأقل.'); return; }
+  const size = Math.min(30, Math.max(2, Number(f.teamSize.value) || 4)); const stage = (f.querySelector('input[name=stage]:checked') || {}).value || 'ثانوية';
+  const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+  try {
+    await S.db.doc('config/project').set(Object.assign({}, D.settings, {stage, grade: f.grade.value.trim(), subjects: list, teamSize: size, updatedAt: new Date().toISOString()}));
+    const have = new Set(D.team.map(m => m.code)); let added = 0;
+    for (let i = 1; i <= size; i++) { const code = 'T' + pad(i, 2); if (have.has(code)) continue; await S.db.collection('team').doc(code).set({code, discipline: list[(i - 1) % list.length], role: 'معلمة مشاركة', status: 'نشطة', joined: today(), userId: ''}); added++; }
+    S.dirty = false; toast(`حُفظ إعداد المشروع: ${list.length} مادة${added ? ' · أُضيف ' + added + ' رمز جديد' : ''}.`);
+  } catch (x) { handleDbErr(x); } finally { btn.disabled = false; }
 });
 
 /* =========================================================

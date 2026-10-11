@@ -246,6 +246,13 @@ details.more[open]{display:flex;flex-direction:column;gap:12px}
 #gate .err{color:var(--del-fg);font-size:14px;min-height:20px}
 #gate .linkbtn{background:none;border:0;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;padding:0;align-self:flex-start}
 .signout{background:none;border:0;color:#fff;text-decoration:underline;font:inherit;cursor:pointer;padding:0}
+
+/* extra subject slots for any school's subjects */
+:root{--p1:#1F5AA6;--p1s:#E1EBF8;--p2:#A4510F;--p2s:#FBEBDD;--p3:#0D7563;--p3s:#DDF2EC;--p4:#7A3E9C;--p4s:#F1E6F7;--p5:#B0285E;--p5s:#FBE3EC;--p6:#5B6B12;--p6s:#EEF2D9;--p7:#8A5A12;--p7s:#F6ECD9;--p8:#0F6A85;--p8s:#DDEFF5}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--p1:#8DB7F0;--p1s:#1A2B44;--p2:#F0AE72;--p2s:#3A2817;--p3:#7FD8C4;--p3s:#163A33;--p4:#D3A6EC;--p4s:#2F2140;--p5:#F2A0C0;--p5s:#3E1A2A;--p6:#C8D97A;--p6s:#2C3214;--p7:#E8C27E;--p7s:#3A2C14;--p8:#86D3EA;--p8s:#143440}}
+:root[data-theme="dark"]{--p1:#8DB7F0;--p1s:#1A2B44;--p2:#F0AE72;--p2s:#3A2817;--p3:#7FD8C4;--p3s:#163A33;--p4:#D3A6EC;--p4s:#2F2140;--p5:#F2A0C0;--p5s:#3E1A2A;--p6:#C8D97A;--p6s:#2C3214;--p7:#E8C27E;--p7s:#3A2C14;--p8:#86D3EA;--p8s:#143440}
+.sub-p1{background:var(--p1s);color:var(--p1)}.sub-p2{background:var(--p2s);color:var(--p2)}.sub-p3{background:var(--p3s);color:var(--p3)}.sub-p4{background:var(--p4s);color:var(--p4)}.sub-p5{background:var(--p5s);color:var(--p5)}.sub-p6{background:var(--p6s);color:var(--p6)}.sub-p7{background:var(--p7s);color:var(--p7)}.sub-p8{background:var(--p8s);color:var(--p8)}
+.sub-x{background:var(--surface2);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head><body>
