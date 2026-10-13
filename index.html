@@ -2,12 +2,10 @@
 <html lang="ar" dir="rtl"><head>
 <title>بُرهان</title>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
-<script src="seed.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@500;700&display=swap">
 <style>
@@ -204,6 +202,8 @@ label.f:has([required])>span:first-child::after{content:" *";color:var(--amber)}
 .chips input{position:absolute;opacity:0;pointer-events:none}
 .chips label:has(input:focus-visible){outline:3px solid var(--amber);outline-offset:2px}
 .chips button.c:hover{border-color:var(--accent)}
+.chips button.c[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+tr.mine td{background:var(--accent-soft, rgba(14,91,88,.08))}
 .counter{font-size:14px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:4px 12px;border-radius:999px}
 details.more{border:1px dashed var(--line);border-radius:12px;padding:10px 14px}
 details.more>summary{cursor:pointer;font-weight:600;color:var(--accent);min-height:32px}
@@ -265,84 +265,114 @@ details.more[open]{display:flex;flex-direction:column;gap:12px}
 .sgrid td:first-child,.sgrid th:first-child{text-align:right}
 .mine{background:var(--accent-soft)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+
+/* ---- Burhan v2: multi-project platform additions ---- */
+[hidden]{display:none!important}
+.projbox{margin:4px 6px 10px;padding:10px 12px;border-radius:10px;background:var(--side-on);font-size:13px;color:var(--side-fg)}
+.projbox select{width:100%;margin-top:6px;min-height:38px;border-radius:8px;border:0;padding:0 8px;font:inherit;background:var(--surface);color:var(--fg)}
+.wiz{display:flex;flex-wrap:wrap;gap:6px;counter-reset:w}
+.wiz span{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--surface2);color:var(--muted);font-size:13px}
+.wiz span.on{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.wiz span.done{background:var(--accent-soft);color:var(--accent)}
+.modgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.modgrid label{display:flex;gap:10px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer}
+.modgrid label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.modgrid input{margin-top:6px;width:18px;height:18px;flex:none}
+.modgrid b{display:block;color:var(--accent)}
+.modgrid small{display:block;color:var(--muted);font-size:13px;line-height:1.6}
+.rolechips{display:flex;flex-wrap:wrap;gap:6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
+.kpi{background:var(--surface2);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column}
+.kpi b{font-size:26px;font-family:var(--f-display);color:var(--accent);line-height:1.2}
+.kpi span{font-size:13px;color:var(--muted)}
+.bar{height:10px;border-radius:6px;background:var(--surface2);overflow:hidden;min-width:80px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.lvlbars{display:flex;flex-direction:column;gap:6px}
+.lvlbars .r{display:grid;grid-template-columns:120px 1fr 44px;gap:8px;align-items:center;font-size:14px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:700px){.split{grid-template-columns:1fr}}
+.ev{border-inline-start:4px solid var(--accent);padding-inline-start:10px}
+.interp{border-inline-start:4px solid var(--amber);padding-inline-start:10px}
+.diff td{vertical-align:top;font-size:14px}
+.diff .chg{background:var(--amber-soft)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+th{font-size:13px;color:var(--muted);font-weight:600}
+.qrow{display:grid;grid-template-columns:1fr 150px 40px;gap:8px;align-items:center}
+.qrow input,.qrow select{min-height:40px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;background:var(--surface2);color:var(--muted)}
+.pill.good{background:var(--accent-soft);color:var(--accent)}
+.pill.warn{background:var(--amber-soft);color:var(--amber)}
+#printArea{display:none}
+@media print{
+  @page{size:A4;margin:16mm}
+  body{background:#fff}
+  .shell,.qbar,.toast,#gate{display:none!important}
+  #printArea{display:block!important;color:#000;font-family:var(--f-body)}
+  #printArea table{font-size:12px}
+  #printArea h2{font-size:20px}#printArea h3{font-size:15px;margin-top:12px}
+}
+.action.on{border-color:var(--accent);background:var(--accent-soft)}
+.report{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.report table{font-size:14px}.report th,.report td{border:1px solid var(--line)}
+.rephead{display:flex;flex-direction:column;border-bottom:2px solid var(--accent);padding-bottom:6px;color:var(--accent)}.rephead span{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+#view[data-stale]::before{content:"وصلت تحديثات من الفريق؛ ستظهر بعد الحفظ أو الانتقال إلى صفحة أخرى.";display:block;font-size:13px;color:var(--amber);background:var(--amber-soft);padding:6px 10px;border-radius:8px;margin-bottom:8px}
+@media print{#printArea th,#printArea td{border:1px solid #999}#printArea .rephead{color:#000}}
 </style>
 </head><body>
 <div class="shell" dir="rtl" lang="ar" id="app">
   <aside class="rail" aria-label="القائمة">
-    <div class="brand"><b>بُرهان</b><span>دليلٌ على التعلّم، وقرارٌ مبنيٌّ على الدليل</span></div>
+    <div class="brand"><b>بُرهان</b><span>من دليل التعلّم إلى قرار التحسين</span></div>
     <button class="menubtn" id="menuBtn" type="button" aria-expanded="false" aria-controls="nav">القائمة ☰</button>
+    <div class="projbox" id="projbox"></div>
     <nav class="navs" id="nav"></nav>
-    <div class="who" id="who">جارٍ الاتصال بقاعدة البيانات…</div>
+    <div class="who" id="who"></div>
   </aside>
   <main class="main"><div class="wrap" id="view"><div class="empty">جارٍ التحميل…</div></div></main>
 </div>
 <nav class="qbar" id="qbar" aria-label="اختصارات"></nav>
 <div class="toast" id="toast" role="status" hidden></div>
+<div id="printArea" dir="rtl" lang="ar"></div>
 
 <div id="gate" dir="rtl" lang="ar">
 <form class="card" id="gateForm" novalidate>
-  <h1>بُرهان</h1><p class="lede small">دليلٌ على التعلّم، وقرارٌ مبنيٌّ على الدليل.</p>
+  <h1>بُرهان</h1><p class="lede small">من دليل التعلّم إلى قرار التحسين: منصة لإدارة بحث الدرس والتطوير المهني التشاركي.</p>
   <div class="tabs" role="tablist"><button type="button" class="tab" role="tab" id="tIn" aria-selected="true">دخول</button><button type="button" class="tab" role="tab" id="tUp" aria-selected="false">إنشاء حساب</button></div>
-  <p class="small muted" id="gHint">ادخلي ببريدك وكلمة المرور.</p>
+  <label class="f" id="gNameWrap" hidden><span>الاسم الظاهر للفريق</span><input id="gName" autocomplete="name"></label>
   <label class="f"><span>البريد الإلكتروني</span><input id="gEmail" type="email" autocomplete="username" required dir="ltr"></label>
   <label class="f"><span>كلمة المرور</span><input id="gPass" type="password" autocomplete="current-password" required dir="ltr"></label>
   <label class="f" id="gPass2Wrap" hidden><span>تأكيد كلمة المرور</span><input id="gPass2" type="password" autocomplete="new-password" dir="ltr"></label>
   <div class="err" id="gErr" role="alert"></div>
   <button class="btn bigbtn" type="submit" id="gBtn">دخول</button>
   <button class="linkbtn" type="button" id="gReset">نسيتُ كلمة المرور</button>
-</form>
-<div class="card" id="gPending" hidden>
-  <h1>بُرهان</h1><h2>طلبكِ وصل إلى قائدة المشروع</h2>
-  <p class="lede small">سُجّل حسابك <b id="gPendEmail" dir="ltr"></b>. ستُفتح المنصة تلقائيًا هنا بمجرد أن توافق قائدة المشروع على انضمامك.</p>
-  <div class="note" id="gPendState">بانتظار الموافقة…</div>
-  <button class="btn ghost" type="button" id="gOut">تسجيل الخروج</button>
-</div></div>
+</form></div>
 <script>
 (function () {
   const $ = id => document.getElementById(id);
   const err = (m, ok) => { $('gErr').textContent = m || ''; $('gErr').style.color = ok ? 'var(--accent)' : ''; };
-  const MSG = {'auth/invalid-credential':'البريد أو كلمة المرور غير صحيحة.','auth/wrong-password':'كلمة المرور غير صحيحة.','auth/user-not-found':'هذا البريد غير مسجّل. أنشئي حسابًا من تبويب «إنشاء حساب».','auth/too-many-requests':'محاولات كثيرة. انتظري قليلًا ثم حاولي.','auth/network-request-failed':'تعذّر الاتصال بالإنترنت.','auth/invalid-email':'اكتبي بريدًا صحيحًا.','auth/email-already-in-use':'هذا البريد له حساب. ادخلي من تبويب «دخول».','auth/weak-password':'كلمة المرور قصيرة: 6 أحرف على الأقل.','auth/operation-not-allowed':'طريقة الدخول بالبريد غير مفعّلة في Firebase بعد.'};
-  if (!window.firebase || !window.BURHAN_FIREBASE || /ضعي/.test(window.BURHAN_FIREBASE.apiKey)) { err('لم تُضبط إعدادات Firebase بعد في ملف firebase-config.js.'); $('gBtn').disabled = true; return; }
+  const MSG = {'auth/invalid-credential':'البريد أو كلمة المرور غير صحيحة.','auth/wrong-password':'كلمة المرور غير صحيحة.','auth/user-not-found':'هذا البريد غير مسجّل. أنشئ حسابًا من تبويب «إنشاء حساب».','auth/too-many-requests':'محاولات كثيرة. انتظر قليلًا ثم حاول.','auth/network-request-failed':'تعذّر الاتصال بالإنترنت.','auth/invalid-email':'اكتب بريدًا صحيحًا.','auth/email-already-in-use':'هذا البريد له حساب. ادخل من تبويب «دخول».','auth/weak-password':'كلمة المرور قصيرة: 6 أحرف على الأقل.','auth/operation-not-allowed':'طريقة الدخول بالبريد غير مفعّلة في Firebase بعد.'};
+  if (!window.firebase || !window.BURHAN_FIREBASE) { err('لم تُضبط إعدادات Firebase بعد في ملف firebase-config.js.'); $('gBtn').disabled = true; return; }
   firebase.initializeApp(window.BURHAN_FIREBASE);
-  const auth = firebase.auth(); const fs = firebase.firestore();
-  try { fs.settings({ignoreUndefinedProperties: true, merge: true}); } catch (e) {}
-  const owners = (window.BURHAN_OWNERS || []).map(x => String(x).toLowerCase());
+  const auth = firebase.auth(); const db = firebase.firestore();
+  try { db.settings({ignoreUndefinedProperties: true, merge: true}); } catch (e) {}
   let mode = 'in';
-  const setMode = m => { mode = m; $('tIn').setAttribute('aria-selected', m === 'in'); $('tUp').setAttribute('aria-selected', m === 'up'); $('gPass2Wrap').hidden = m !== 'up'; $('gReset').hidden = m === 'up'; $('gBtn').textContent = m === 'up' ? 'إنشاء الحساب' : 'دخول'; $('gPass').autocomplete = m === 'up' ? 'new-password' : 'current-password'; $('gHint').textContent = m === 'up' ? 'أنشئي حسابك ببريدك. بعدها توافق قائدة المشروع على انضمامك.' : 'ادخلي ببريدك وكلمة المرور.'; err(''); };
+  const setMode = m => { mode = m; $('tIn').setAttribute('aria-selected', m === 'in'); $('tUp').setAttribute('aria-selected', m === 'up'); $('gPass2Wrap').hidden = m !== 'up'; $('gNameWrap').hidden = m !== 'up'; $('gReset').hidden = m === 'up'; $('gBtn').textContent = m === 'up' ? 'إنشاء الحساب' : 'دخول'; $('gPass').autocomplete = m === 'up' ? 'new-password' : 'current-password'; err(''); };
   $('tIn').onclick = () => setMode('in'); $('tUp').onclick = () => setMode('up');
   $('gateForm').addEventListener('submit', async e => { e.preventDefault(); err(''); const em = $('gEmail').value.trim(), pw = $('gPass').value;
     if (mode === 'up' && pw !== $('gPass2').value) { err('كلمتا المرور غير متطابقتين.'); return; }
     $('gBtn').disabled = true;
-    try { if (mode === 'up') await auth.createUserWithEmailAndPassword(em, pw); else await auth.signInWithEmailAndPassword(em, pw); }
-    catch (x) { err(MSG[x.code] || 'تعذّر الإكمال. حاولي مرة أخرى.'); } finally { $('gBtn').disabled = false; } });
-  $('gReset').addEventListener('click', async () => { const em = $('gEmail').value.trim(); if (!em) { err('اكتبي بريدك أولًا ثم اضغطي «نسيتُ كلمة المرور».'); return; }
+    try { if (mode === 'up') { window.BURHAN_NEWNAME = $('gName').value.trim(); await auth.createUserWithEmailAndPassword(em, pw); } else await auth.signInWithEmailAndPassword(em, pw); }
+    catch (x) { err(MSG[x.code] || 'تعذّر الإكمال. حاول مرة أخرى.'); } finally { $('gBtn').disabled = false; } });
+  $('gReset').addEventListener('click', async () => { const em = $('gEmail').value.trim(); if (!em) { err('اكتب بريدك أولًا ثم اضغط «نسيتُ كلمة المرور».'); return; }
     try { await auth.sendPasswordResetEmail(em); err('أُرسل رابط إعادة التعيين إلى بريدك.', true); } catch (x) { err(MSG[x.code] || 'تعذّر الإرسال.'); } });
-  $('gOut').onclick = () => auth.signOut();
-  let booted = false, unsub = null;
-  const showForm = () => { $('gate').hidden = false; $('gateForm').hidden = false; $('gPending').hidden = true; };
-  const showPending = (u, st) => { $('gate').hidden = false; $('gateForm').hidden = true; $('gPending').hidden = false; $('gPendEmail').textContent = u.email; $('gPendState').textContent = st === 'rejected' ? 'لم تُقبل هذه المرة. تواصلي مع قائدة المشروع.' : 'بانتظار الموافقة…'; };
-  function boot(u, isOwner) {
+  let booted = false;
+  auth.onAuthStateChanged(u => {
+    if (!u) { if (booted) location.reload(); $('gate').hidden = false; return; }
     if (booted) return; booted = true; $('gate').hidden = true;
-    window.claude = {use: async name => {
-      if (name === 'db') return fs;
-      if (name === 'user') return {id: async () => u.uid, canEdit: async () => isOwner, email: u.email};
-      if (name === 'downloads') return {save: async ({filename, data}) => { const blob = data instanceof Blob ? data : new Blob([data], {type: /\.csv$/.test(filename) ? 'text/csv;charset=utf-8' : 'text/html;charset=utf-8'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }};
-      throw {code: 'unavailable'};
-    }};
-    window.burhanSignOut = () => auth.signOut(); window.burhanIsOwner = isOwner;
-    const load = () => { const s = document.createElement('script'); s.src = 'app.js'; document.body.appendChild(s); };
-    if (!isOwner || !window.BURHAN_SEED) { load(); return; }
-    fs.collection('team').limit(1).get().then(async snap => { if (!snap.empty) return; const b = fs.batch(); Object.entries(window.BURHAN_SEED).forEach(([c, docs]) => Object.entries(docs).forEach(([id, d]) => b.set(fs.collection(c).doc(id), d))); await b.commit(); }).catch(() => {}).finally(load);
-  }
-  auth.onAuthStateChanged(async u => {
-    if (unsub) { unsub(); unsub = null; }
-    if (!u) { if (booted) location.reload(); showForm(); return; }
-    const isOwner = owners.includes(String(u.email || '').toLowerCase());
-    if (isOwner) { boot(u, true); return; }
-    const ref = fs.collection('access').doc(u.uid);
-    try { const d = await ref.get(); if (!d.exists) await ref.set({email: String(u.email || '').toLowerCase(), status: 'pending', createdAt: new Date().toISOString()}); }
-    catch (x) { showForm(); err('تعذّر إرسال طلب الانضمام. حاولي لاحقًا.'); return; }
-    unsub = ref.onSnapshot(d => { const st = d.exists ? d.data().status : 'pending'; if (st === 'approved') { if (unsub) { unsub(); unsub = null; } boot(u, false); } else showPending(u, st); }, () => showPending(u, 'pending'));
+    window.BURHAN = {auth, db, user: {uid: u.uid, email: String(u.email || '').toLowerCase(), name: window.BURHAN_NEWNAME || u.displayName || ''}};
+    const s = document.createElement('script'); s.src = 'app.js?v=202610130011'; document.body.appendChild(s);
   });
 })();
 </script>

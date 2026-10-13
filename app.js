@@ -1,1733 +1,1094 @@
-(() => {
-'use strict';
-
+/* Burhan v2 — built 2026-10-13 00:11 */
+(function () {
+"use strict";
 /* =========================================================
-   1. Content: subjects, phases (the leader's playbook), practices
+   Burhan v2 — a general, multi-project platform for Lesson Study.
+   Lesson Study is the backbone; SOLO, the AI assistant and the
+   research space are optional modules each project switches on.
    ========================================================= */
-const SUBJ = [
-  {k:'dt', n:'التقنية الرقمية', ex:'تصميم خوارزمية لحل مشكلة', obs:'كتبت الطالبة خطوات الخوارزمية صحيحة لكنها لم تستطع تفسير سبب ترتيب الشرط قبل التكرار.'},
-  {k:'math', n:'الرياضيات', ex:'حل المعادلات الأسية', obs:'حلت المجموعة المعادلة إجرائيًا، وعند سؤالها «لماذا أخذتِ اللوغاريتم؟» لم تربط الخطوة بخصائص الأسس.'},
-  {k:'chem', n:'الكيمياء', ex:'سرعة التفاعل الكيميائي', obs:'فسّرت الطالبة أثر درجة الحرارة على سرعة التفاعل، لكنها لم تنقل التفسير إلى أثر التركيز.'},
-  {k:'phys', n:'الفيزياء', ex:'تفسير منحنيات السرعة–الزمن', obs:'قرأت الطالبة الميل رقمًا ولم تفسّره معدل تغيّر للسرعة إلا بعد تلميح «ماذا يحدث للسرعة كل ثانية؟».'}];
-const SUBJ_BY_NAME = Object.fromEntries(SUBJ.map(s => [s.n, s]));
-const subjCls = n => 'chip sub-' + ((SUBJ_BY_NAME[n] || {}).k || 'x');
-const subjChip = n => n ? `<span class="${subjCls(n)}">${esc(n)}</span>` : '';
+const B = window.BURHAN; const db = B.db; const ME = B.user;
 
-const PRACTICES = [
-  ['diag','تشخيص احتياجات المتعلمات'],['evid','استخدام أدلة التعلّم'],['diff','تصميم التعليم المتمايز'],['scaf','بناء المهام المتدرجة'],
-  ['ques','أسئلة تكشف التفكير'],['feed','التغذية الراجعة'],['adapt','تعديل التدريس بالأدلة'],['ai','استخدام AI تربويًا'],
-  ['refl','التأمل في الممارسة'],['collab','التعاون المهني']];
-const PRACTICE_NAME = Object.fromEntries(PRACTICES);
-const TIMEPOINTS = [['Baseline','خط الأساس (قبل)'],['During','أثناء الدورة'],['Post','بعد الدورة'],['Delayed','احتفاظ (بعد 3–4 أسابيع)']];
-const T_POINTS = [['Baseline','قبلي'],['Midpoint','منتصف'],['Post','بعدي']];
-const INDICATORS = [['explanation','التفسير','تشرح الطالبة لماذا، لا ماذا فقط'],['transfer','نقل التعلّم','تطبّق الفكرة في موقف جديد'],['independence','الاستقلالية','تنجز دون دعم أو بأقل دعم'],['verification','التحقق من الأخطاء','تراجع إجابتها وتكتشف خطأها']];
-const RUBRIC = ['0 لا يظهر','1 بداية','2 جزئي','3 واضح','4 متمكّن'];
-const CONTEXTS = {
-  in:{n:'أثناء الحصة',d:'ملاحظة تعلّم الطالبات في درس البحث: لحظة فهم، تعثّر، أو أثر دعم.',icon:'eye'},
-  out:{n:'خارج الحصة',d:'تخطيط، تصحيح أعمال، تجريب استراتيجية، أو ملاحظة عن فصلك.',icon:'notes'},
-  meeting:{n:'في الاجتماع',d:'ما عرضتِه من أدلة وما نوقش ومقترحك للفريق.',icon:'meetings'},
-  after:{n:'بعد الاجتماع',d:'تأمل قصير: ماذا تعلّمتُ، وماذا سأغيّر في حصتي القادمة.',icon:'refl'}};
-const OUT_KINDS = ['تشخيص: عينات أعمال الطالبات','تخطيط درس البحث','تنفيذ درس البحث','تصحيح وتحليل أعمال','تجريب استراتيجية في فصلي','تواصل مع زميلة من مقرر آخر','ملاحظة عامة'];
-const AI_MODES = ['تصميم درس جديد','تعديل درس قائم','مستويات دعم متدرجة','أسئلة تكشف التفكير','مهمة نقل التعلّم','بطاقة خروج','تحليل أنماط الأخطاء','أخرى'];
-const AI_TOOLS = ['Claude داخل بُرهان','Microsoft Copilot','ChatGPT','Gemini','أداة أخرى'];
-const DEC = {accepted:'قبول',modified:'تعديل',rejected:'رفض'};
-const LESSON_FIELDS = [
-  ['outcomes','نواتج التعلّم','ماذا ستعرف الطالبة وتستطيع أن تفعل في نهاية الدرس؟ ابدئي بفعل قابل للملاحظة: تفسّر، تقارن، تبرّر.'],
-  ['problem','مشكلة التعلّم المستهدفة','الجزء من المشكلة المشتركة الذي يعالجه هذا الدرس.'],
-  ['prior','المعرفة السابقة','ما الذي يجب أن تعرفه الطالبة قبل الدرس؟'],
-  ['expected','التوقعات حول استجابات الطالبات','كيف نتوقع أن تفكر الطالبات؟ اكتبي إجابتين أو ثلاثًا متوقعة.'],
-  ['stumbles','نقاط التعثّر المتوقعة','أين ستتعثر الطالبات غالبًا؟ هذه ما ستراقبه الملاحِظات.'],
-  ['diffMethods','أساليب التعليم المتمايز','كيف يختلف المدخل أو المهمة أو المنتج بين الطالبات؟'],
-  ['support','مستويات الدعم','دعم 1: تلميح، دعم 2: بطاقة موجّهة، دعم 3: مثال محلول جزئيًا.'],
-  ['formative','الأسئلة التكوينية','أسئلة تكشف التفكير: كيف عرفتِ؟ ماذا لو…؟'],
-  ['evidencePlan','أدلة التعلّم المطلوبة','ما الذي سنجمعه ونصححه بمقياس 0–4؟'],
-  ['aiRole','دور الذكاء الاصطناعي','أين ساعد AI في التصميم، وأين سيُستخدم في الحصة إن وُجد؟'],
-  ['independent','ما تؤديه الطالبة باستقلالية','الجزء الذي تنجزه الطالبة دون دعم.'],
-  ['transfer','مهمة نقل التعلّم','موقف جديد تطبّق فيه الطالبة الفكرة.'],
-  ['exit','بطاقة الخروج','سؤال أو سؤالان قصيران يُصحَّحان بمقياس 0–4.']];
-
-/* The leader's playbook: what each phase is for, what to do, what counts as done. */
-const PHASES = [
- {n:'التشخيص',wk:'الأسبوع 1',goal:'نتفق على مشكلة تعلّم واحدة مشتركة تظهر في جميع المقررات المشاركة.',
-  do:['كل معلمة تجمع 5–6 عينات أعمال من فصلها (بلا أسماء) وتدوّن نمط الصعوبة من «خارج الحصة».','اجتماع تشخيص: كل معلمة تعرض نمطها في 3 دقائق.','صياغة المشكلة المشتركة وسؤال الاستقصاء في «الإعداد».'],
-  who:'كل الفريق · تقود القائدة الاجتماع',out:'مشكلة تعلّم مشتركة + سؤال استقصاء مهني',
-  ev:[['ملاحظات تشخيص من كل مقرر', c => [subjCount(inCy(D.notes, c).filter(n => n.context === 'out')),, Math.max(1, SUBJ.length)]],['اجتماع تشخيص مسجّل', c => [inCy(D.meetings, c).length, 1]],['قرار بصياغة المشكلة', c => [inCy(D.decisions, c).length, 1]],['المشكلة مكتوبة في الإعداد', () => [D.settings.learningProblem ? 1 : 0, 1]]],
-  act:[['تدوين خارج الحصة','rec','out'],['تسجيل اجتماع','meet','meetings'],['تسجيل قرار','meet','decisions']]},
- {n:'جمع خط الأساس',wk:'الأسبوع 1',goal:'نقيس مستوى الطالبات قبل أي تدخل حتى نعرف لاحقًا ماذا تغيّر.',
-  do:['مهمة قصيرة بنفس الفكرة مكيّفة لكل مقرر (10–15 دقيقة).','تصحيح كل عمل بمقياس 0–4 في المؤشرات الأربعة.','إدخال الدرجات برموز الطالبات من «دليل تعلّم» بنقطة «خط الأساس».'],
-  who:'كل معلمة في فصلها',out:'درجات خط أساس مرمّزة لكل مقرر',
-  ev:[['مقررات لها خط أساس', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline')),, Math.max(1, SUBJ.length)]],['أدلة خط أساس (20 على الأقل)', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length, 20]]],
-  act:[['إدخال دليل تعلّم','rec','evidence']]},
- {n:'التخطيط',wk:'الأسبوع 2',goal:'نحوّل نتائج خط الأساس إلى هدف ودرس بحث واضح.',
-  do:['اجتماع تخطيط: ماذا أظهر خط الأساس؟','اختيار مقرر درس البحث والفصل الذي سيُنفَّذ فيه.','كتابة نواتج التعلّم والتوقعات ونقاط التعثّر.'],
-  who:'الفريق · المعلمة المنفّذة تقود المحتوى',out:'هدف بعيد المدى + مسودة درس',
-  ev:[['اجتماع تخطيط', c => [inCy(D.meetings, c).length, 2]],['تدوين تخطيط', c => [inCy(D.notes, c).filter(n => n.kind === OUT_KINDS[1]).length, 1]],['الهدف بعيد المدى في الإعداد', () => [D.settings.goal ? 1 : 0, 1]]],
-  act:[['تدوين تخطيط','rec','out'],['تسجيل اجتماع','meet','meetings']]},
- {n:'تصميم درس البحث',wk:'الأسبوع 2',goal:'نكتب النسخة الأولى من درس البحث بكل عناصرها.',
-  do:['كتابة V1 في «الدروس» أو بمساعدة «استوديو AI».','مراجعة الفريق: هل نقاط التعثّر قابلة للملاحظة؟','توزيع الملاحِظات على المجموعات.'],
-  who:'المعلمة المنفّذة + زميلة من مقرر آخر',out:'خطة درس البحث V1',
-  ev:[['نسخة أولى من الدرس', c => [inCy(D.lessons, c).filter(l => l.version === 1).length, 1]],['توثيق AI قبل الدرس بحكم بشري (اجتماع 1–4)', c => [inCy(D.ai, c).filter(a => ['S1','S2','S3','S4'].includes(a.stage) && a.reason).length, 1]]],
-  act:[['استوديو AI','go','ai'],['كتابة درس','go','lessons']]},
- {n:'التنفيذ',wk:'الأسبوع 3',goal:'تنفّذ معلمة الدرس، والفريق يلاحظ الطالبات لا المعلمة.',
-  do:['تنفيذ V1 في الفصل المحدد.','كل ملاحِظة تتابع مجموعة أو طالبتين برموزهن.','تدوين التنفيذ من «خارج الحصة» بنوع «تنفيذ درس البحث».'],
-  who:'المعلمة المنفّذة + 2–3 ملاحِظات',out:'درس منفَّذ وملاحظات',
-  ev:[['تدوين التنفيذ', c => [inCy(D.notes, c).filter(n => n.kind === OUT_KINDS[2]).length, 1]]],
-  act:[['تدوين التنفيذ','rec','out']]},
- {n:'الملاحظة',wk:'الأسبوع 3',goal:'نجمع لحظات التعلّم والتعثّر كما حدثت.',
-  do:['3 ملاحظات على الأقل لكل ملاحِظة من «أثناء الحصة».','كل ملاحظة: الوقت، الطالبة/المجموعة، ما حدث، التلميح، الاستجابة.'],
-  who:'الملاحِظات',out:'ملاحظات صفية مرمّزة',
-  ev:[['ملاحظات أثناء الحصة (6 على الأقل)', c => [inCy(D.notes, c).filter(n => n.context === 'in').length, 6]]],
-  act:[['ملاحظة أثناء الحصة','rec','in']]},
- {n:'جمع الأدلة',wk:'الأسبوع 3',goal:'نجمع أعمال الطالبات وبطاقات الخروج ونصححها.',
-  do:['تصحيح بطاقات الخروج بمقياس 0–4.','إدخالها بنقطة «أثناء الدورة».'],
-  who:'المعلمة المنفّذة + زميلة للتصحيح المزدوج',out:'أدلة أثناء الدورة',
-  ev:[['أدلة «أثناء الدورة»', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'During').length, 15]]],
-  act:[['إدخال دليل تعلّم','rec','evidence']]},
- {n:'تحليل الأدلة',wk:'الأسبوع 4',goal:'نقارن ما توقعناه بما حدث، ونقرر ماذا نغيّر.',
-  do:['اجتماع تحليل وفق البروتوكول (45 دقيقة).','كل قرار يُسجَّل مع دليله وبدائله وسببه.','مهام إعادة التصميم توزَّع في نهاية الاجتماع.'],
-  who:'كل الفريق',out:'قرارات مبنية على أدلة',
-  ev:[['قرار مرتبط بدليل', c => [inCy(D.decisions, c).filter(d => d.evidence).length, 1]],['ملاحظات «في الاجتماع»', c => [inCy(D.notes, c).filter(n => n.context === 'meeting').length, 2]]],
-  act:[['تسجيل قرار','meet','decisions'],['ملاحظة في الاجتماع','rec','meeting']]},
- {n:'إعادة التصميم',wk:'الأسبوع 4',goal:'نكتب V2 ونربط كل تغيير بالقرار الذي أدى إليه.',
-  do:['إنشاء نسخة جديدة من الدرس مع «ما الذي تغيّر ولماذا».','ربط النسخة بالقرار.'],
-  who:'معلمة من مقرر آخر غالبًا',out:'خطة درس البحث V2',
-  ev:[['نسخة ثانية مرتبطة بقرار', c => [inCy(D.lessons, c).filter(l => l.version >= 2 && (l.decisionId || l.changeNote)).length, 1]],['توثيق AI بعد الملاحظة بحكم بشري (اجتماع 5)', c => [inCy(D.ai, c).filter(a => a.stage === 'S5' && a.reason).length, 1]]],
-  act:[['استوديو AI (تعديل)','go','ai'],['نسخة جديدة','go','lessons']]},
- {n:'إعادة التطبيق',wk:'الأسبوع 5',goal:'نطبّق V2 في فصل آخر، ويفضل في مقرر آخر.',
-  do:['تنفيذ V2 وملاحظته بنفس الطريقة.','تسجيل ملاحظات «أثناء الحصة» على V2.'],
-  who:'معلمة ثانية + ملاحِظات',out:'ملاحظات على V2',
-  ev:[['ملاحظات على النسخة الثانية', c => [inCy(D.notes, c).filter(n => n.context === 'in' && /-V[2-9]/.test(n.lessonCode || '')).length, 3]]],
-  act:[['ملاحظة أثناء الحصة','rec','in']]},
- {n:'قياس الأثر',wk:'الأسبوع 5–6',goal:'نقيس الطالبات بعد الدورة ونقارن بخط الأساس.',
-  do:['مهمة بعدية مكافئة لمهمة خط الأساس.','إدخال الدرجات بنقطة «بعد الدورة»، والاحتفاظ بعد 3–4 أسابيع.'],
-  who:'كل معلمة في فصلها',out:'مقارنة قبل/بعد لكل مقرر',
-  ev:[['أدلة «بعد الدورة»', c => [inCy(D.evidence, c).filter(e => e.timePoint === 'Post').length, Math.max(1, inCy(D.evidence, c).filter(e => e.timePoint === 'Baseline').length)]],['مقررات لها قياس بعدي', c => [subjCount(inCy(D.evidence, c).filter(e => e.timePoint === 'Post')),, Math.max(1, SUBJ.length)]]],
-  act:[['إدخال دليل تعلّم','rec','evidence'],['تقرير أثر الطالبات','report','impact']]},
- {n:'التأمل',wk:'الأسبوع 6',goal:'كل معلمة توثّق ما تغيّر في ممارستها، ثم نغلق الدورة بتقرير.',
-  do:['تأمل «بعد الاجتماع» من كل معلمة.','إصدار «تقرير الدورة» ومناقشته.','تحديد مشكلة الدورة التالية.'],
-  who:'كل الفريق',out:'تأملات + تقرير الدورة',
-  ev:[['تأملات من أعضاء الفريق', c => [new Set(inCy(D.notes, c).filter(n => n.context === 'after').map(n => n.author)).size, Math.max(1, D.team.length)]],['سلسلة AI مكتملة: دليل ← مقترح ← حكم ← قرار تمايز', c => [chainComplete(c), 2]]],
-  act:[['كتابة تأمل','rec','after'],['تقرير الدورة','report','cycle']]}];
-/* The parallel cycle: all subjects move through the same seven stages together. */
-const cySubj = c => !c ? [] : (c.mode === 'parallel' ? ((c.subjects || []).length ? c.subjects : (typeof projSubjects === 'function' ? projSubjects() : SUBJ.map(s => s.n))) : [c.subject].filter(Boolean));
-const subjWith = (c, fn) => cySubj(c).filter(sj => fn(sj)).length;
-const inCyS = (arr, c, sj) => inCy(arr, c).filter(r => r.subject === sj);
-const PHASES_PAR = [
- {n:'التشخيص والقياس القبلي',wk:'الأسبوع 1',goal:'كل معلمة تقيس طالباتها قبل أي تغيير، ويتفق الفريق على مشكلة تعلّم مشتركة بين المواد.',
-  do:['كل معلمة تطبّق مهمة قصيرة (10–15 دقيقة) في فصلها وتصححها بمقياس 0–4.','إدخال الدرجات من «درجات الطالبات ← الفصل كاملًا» بنقطة «خط الأساس».','اجتماع: كل معلمة تعرض نمط الصعوبة في 3 دقائق، ثم قرار بصياغة المشكلة المشتركة.'],
-  who:'كل معلمة في فصلها · تقود القائدة الاجتماع',out:'قياس قبلي لكل مادة + مشكلة مشتركة',
-  ev:[['مواد لها قياس قبلي', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Baseline')), cySubj(c).length]],['قرار بالمشكلة المشتركة', c => [inCy(D.decisions, c).length ? 1 : 0, 1]]],
-  act:[['إدخال الدرجات','rec','evidence'],['اجتماع الآن','meet','live']]},
- {n:'التخطيط المشترك',wk:'الأسبوع 2',goal:'الفريق كله يخطط درس كل مادة، ثم يستعين بالذكاء الاصطناعي ويراجع مقترحه، فيخرج كل درس بنسخته الأولى V1.',
-  do:['معلمة كل مادة تحضر مسودة قصيرة قبل الاجتماع.','15 دقيقة لكل مادة: الهدف، أين ستتعثر الطالبات، مستويات الدعم أ/ب/ج.','بعد تفكير الفريق: استوديو AI لاقتراح البدائل، ثم قبول أو تعديل أو رفض مع السبب.','حفظ V1 لكل مادة، وتحديد موعد تدريس كل درس ومن تلاحظ.'],
-  who:'كل الفريق · قد يحتاج اجتماعين',out:'نسخة أولى V1 لكل مادة + جدول التدريس',
-  ev:[['مواد لها نسخة أولى V1', c => [subjWith(c, sj => inCyS(D.lessons, c, sj).some(l => (l.version || 1) === 1)), cySubj(c).length]],['مواد وُثّق فيها AI بحكم بشري', c => [subjWith(c, sj => inCyS(D.ai, c, sj).some(a => a.reason)), cySubj(c).length]]],
-  act:[['استوديو AI','go','ai'],['الدروس','go','lessons'],['اجتماع الآن','meet','live']]},
- {n:'تدريس V1 وملاحظته بالتناوب',wk:'الأسابيع 3–5',goal:'كل أسبوع تدرّس معلمة مادة درسها، والفريق يلاحظ الطالبات، ثم جلسة قصيرة بعد الحصة مباشرة.',
-  do:['كل ملاحِظة تتابع مجموعة أو طالبتين وتسجّل من «ملاحظة حصة».','بطاقة خروج في آخر الحصة تُصحَّح وتُدخل بنقطة «أثناء الدورة».','جلسة 10 دقائق بعد الحصة، وتدوين أهم ما ظهر من «خارج الحصة» بنوع «تنفيذ درس البحث» في اليوم نفسه.'],
-  who:'معلمة المادة + بقية الفريق ملاحِظات',out:'ملاحظات وبطاقات خروج لكل مادة',
-  ev:[['مواد لوحظ درسها (3 ملاحظات على الأقل)', c => [subjWith(c, sj => inCyS(D.notes, c, sj).filter(n => n.context === 'in').length >= 3), cySubj(c).length]],['مواد لها جلسة ما بعد الحصة', c => [subjWith(c, sj => inCyS(D.notes, c, sj).some(n => n.kind === OUT_KINDS[2])), cySubj(c).length]],['مواد لها بطاقات خروج', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'During')), cySubj(c).length]]],
-  act:[['ملاحظة حصة','rec','in'],['جلسة بعد الحصة','rec','out'],['بطاقات الخروج','rec','evidence']]},
- {n:'التحليل المشترك والمعالجة',wk:'الأسبوع 6',goal:'نضع نتائج المواد جنبًا إلى جنب: ما الذي نجح وأين؟ ولماذا؟ ثم نقرر تعديل كل درس.',
-  do:['اجتماع من «اجتماع الآن»: الأدلة لكل مادة، ثم المقارنة بين المواد.','بعد التحليل: استوديو AI لاقتراح تعديلات على ما لم ينجح، ثم المراجعة.','قرار مرتبط بدليل لكل مادة، ومهمة لكتابة V2.'],
-  who:'كل الفريق',out:'قرار لكل مادة + خطة V2',
-  ev:[['مواد لها قرار مرتبط بدليل', c => [subjWith(c, sj => inCy(D.decisions, c).some(d => d.evidence && (d.subject === sj || !d.subject))), cySubj(c).length]],['توثيق AI بعد الملاحظة بحكم بشري', c => [inCy(D.ai, c).filter(a => a.stage === 'S5' && a.reason).length ? 1 : 0, 1]]],
-  act:[['اجتماع الآن','meet','live'],['استوديو AI (تعديل)','go','ai']]},
- {n:'تدريس V2',wk:'الأسبوع 7',goal:'كل معلمة تكتب V2 بناء على القرار وتدرّسها في فصل آخر، وتكفي ملاحظة زميلة واحدة.',
-  do:['إنشاء نسخة جديدة من الدرس مع «ما الذي تغيّر ولماذا».','تدريس V2 وتسجيل ملاحظات عليها.'],
-  who:'معلمة كل مادة + زميلة',out:'نسخة ثانية V2 مطبّقة لكل مادة',
-  ev:[['مواد لها نسخة ثانية V2', c => [subjWith(c, sj => inCyS(D.lessons, c, sj).some(l => (l.version || 1) >= 2)), cySubj(c).length]],['مواد لوحظت فيها V2', c => [subjWith(c, sj => inCyS(D.notes, c, sj).some(n => n.context === 'in' && /-V[2-9]/.test(n.lessonCode || ''))), cySubj(c).length]]],
-  act:[['نسخة جديدة','go','lessons'],['ملاحظة حصة','rec','in']]},
- {n:'القياس البعدي',wk:'الأسبوع 7',goal:'مهمة بعدية مكافئة لمهمة الأسبوع الأول في كل فصل، ثم احتفاظ بعد 3–4 أسابيع.',
-  do:['المهمة نفسها بصيغة مكافئة، تُصحَّح بالمقياس نفسه.','الإدخال بنقطة «بعد الدورة».'],
-  who:'كل معلمة في فصلها',out:'مقارنة قبل/بعد لكل مادة',
-  ev:[['مواد لها قياس بعدي', c => [subjWith(c, sj => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Post')), cySubj(c).length]]],
-  act:[['إدخال الدرجات','rec','evidence'],['تقرير أثر الطالبات','report','impact']]},
- {n:'التأمل وإغلاق الدورة',wk:'الأسبوع 7',goal:'كل معلمة توثّق ما تغيّر في ممارستها، ونغلق الدورة بتقرير ونختار تركيز الدورة التالية.',
-  do:['تأمل من كل معلمة: ماذا لاحظتُ، ماذا تعلّمتُ، ماذا سأغيّر.','إصدار «تقرير الدورة» ومناقشته.'],
-  who:'كل الفريق',out:'تأملات + تقرير الدورة',
-  ev:[['تأملات من أعضاء الفريق', c => [new Set(inCy(D.notes, c).filter(n => n.context === 'after').map(n => n.author)).size, Math.max(1, D.team.length)]],['سلاسل AI مكتملة', c => [chainComplete(c), cySubj(c).length]]],
-  act:[['كتابة تأمل','rec','after'],['تقرير الدورة','report','cycle']]}];
-const phasesOf = c => c && c.mode === 'parallel' ? PHASES_PAR : PHASES;
-const phaseIdx = c => Math.min(phasesOf(c).length - 1, Math.max(0, Number((c && c.phase) || 1) - 1));
-const phaseOf = c => phasesOf(c)[phaseIdx(c)];
-const modeName = c => c && c.mode === 'parallel' ? 'متوازية' : 'مادة واحدة';
-
-
-const COLLS = ['access','team','classes','cycles','lessons','ai','notes','meetings','decisions','evidence','tasks','practice','exports','instruments','rqs','library'];
-const ICONS = {
-  dash:'<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
-  analysis:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
-  library:'<path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M8 7h7M8 11h7"/>',
-  home:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
-  rec:'<path d="M12 5v14M5 12h14"/>',
-  notes:'<path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h8M8 18h5"/>',
-  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  refl:'<path d="M4 5h16v11H8l-4 4z"/>',
-  cycle:'<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/>',
-  ai:'<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
-  lessons:'<path d="M4 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4z"/><path d="M20 5h-4a2 2 0 0 0-2 2"/><path d="M20 5v13h-6"/>',
-  meetings:'<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 19c0-3 2.5-5 5-5s5 2 5 5M11 19c0-3 2.5-5 5-5s5 2 5 5"/>',
-  evidence:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-  reports:'<path d="M6 3h9l4 4v14H6z"/><path d="M9 13h6M9 17h6M9 9h3"/>',
-  research:'<path d="M10 3h4M11 3v6L5 19a1 1 0 0 0 .9 1.5h12.2A1 1 0 0 0 19 19l-6-10V3"/>',
-  playbook:'<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h4"/>',
-  setup:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>'};
-const NAV = [
-  ['العمل اليومي',[['home','ماذا أفعل الآن؟'],['rec','سجّلي'],['cycle','دورة بحث الدرس'],['ai','الذكاء الاصطناعي'],['lessons','الدروس ونسخها'],['meetings','الاجتماعات والقرارات']]],
-  ['الأدلة والتحليل',[['dash','لوحة المعلومات'],['evidence','أدلة تعلّم الطالبات'],['analysis','التحليل'],['reports','التقارير']]],
-  ['المعرفة والمراجع',[['library','المكتبة والمراجع'],['playbook','دليل القيادة والتطبيق']]],
-  ['البحث والإدارة',[['research','البحث والبيانات'],['setup','الإعداد']]]];
-const VIEW_KEYS = NAV.flatMap(g => g[1].map(v => v[0]));
-
-/* =========================================================
-   2. State and helpers
-   ========================================================= */
-const D = {settings:{}}; COLLS.forEach(c => D[c] = []);
-const S = {aiTab:'studio',assets:null,dashCycle:'',dashInd:'explanation',anTab:'growth',anInd:'explanation',anFrom:'Baseline',anTo:'Post',libCat:'',libq:'',qq:'',qctx:'',qpr:'',repMeeting:'',delArm:'',db:null,user:null,sample:null,downloads:null,uid:null,canEdit:false,view:'home',dirty:false,recType:'',meetTab:'live',resTab:'map',
-  pbTab:'design',repType:'weekly',phaseSel:0,subj:'',aiAbort:null,aiBusy:false,sig:{},ready:false,err:''};
-try { const v = localStorage.getItem('burhan.view'); if (VIEW_KEYS.includes(v)) S.view = v; S.subj = localStorage.getItem('burhan.subj') || ''; } catch (e) {}
-
+/* ---------- small helpers ---------- */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const pad = (n, w) => String(n).padStart(w, '0');
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2); };
-const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2); };
-const nowTime = () => { const d = new Date(); return pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2); };
-const fmtDate = s => { if (!s) return '—'; try { return new Date(String(s).length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', {day:'numeric',month:'short',year:'numeric'}); } catch (e) { return s; } };
-const dateOf = r => String(r.date || r.createdAt || '').slice(0, 10);
-const byNewest = (a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
-const icon = k => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ''}</svg>`;
-const phase = () => D.settings.studyPhase || 'Pilot';
-const myMember = () => D.team.find(t => t.userId && t.userId === S.uid);
-const myCode = () => (myMember() || {}).code || '';
-const mySubject = () => { const m = myMember(); return m && SUBJ_BY_NAME[m.discipline] ? m.discipline : ''; };
-const curCycle = () => D.cycles.find(c => c.code === D.settings.currentCycle) || D.cycles.slice().sort((a, b) => String(b.code).localeCompare(String(a.code)))[0];
-const inCy = (arr, c) => c ? arr.filter(r => r.cycleId === c.code) : [];
-const subjCount = arr => new Set(arr.map(r => r.subject).filter(Boolean)).size;
-const bySubj = arr => S.subj ? arr.filter(r => r.subject === S.subj) : arr;
-const classLabel = c => c ? `${c.name} · ${c.count || '؟'} طالبة` : '';
-const latestLessons = () => { const m = {}; D.lessons.forEach(l => { if (!m[l.lessonId] || (l.version || 0) > (m[l.lessonId].version || 0)) m[l.lessonId] = l; }); return Object.values(m).sort((a, b) => String(a.lessonId).localeCompare(String(b.lessonId))); };
-const lessonOf = id => D.lessons.find(l => l._id === id);
-const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
-const f1 = v => v == null ? '—' : v.toFixed(1);
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 4200); }
-function opts(list, sel, blank) { return (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(sel ?? '') ? ' selected' : ''}>${esc(l)}</option>`; }).join(''); }
-function checks(name, list, sel) { const s = new Set(sel || []); return `<div class="checks" role="group">${list.map(([v, l]) => `<label><input type="checkbox" name="${name}" value="${esc(v)}"${s.has(v) ? ' checked' : ''}>${esc(l)}</label>`).join('')}</div>`; }
-function field(label, inner, hint) { return `<label class="f"><span>${esc(label)}</span>${hint ? `<span class="hint">${esc(hint)}</span>` : ''}${inner}</label>`; }
-const inp = (name, val, attrs = '') => `<input name="${name}" id="f-${name}" value="${esc(val ?? '')}" ${attrs}>`;
-const area = (name, val, attrs = '') => `<textarea name="${name}" id="f-${name}" ${attrs}>${esc(val ?? '')}</textarea>`;
-const help = (title, body) => `<details class="help"><summary>${esc(title)}</summary>${body}</details>`;
-const stepHead = (n, title, desc) => `<div class="stephead"><span class="n">${n}</span><div><h3>${esc(title)}</h3>${desc ? `<p>${esc(desc)}</p>` : ''}</div></div>`;
-function formData(form) { const fd = new FormData(form); const o = {}; const multi = new Set($$('input[type=checkbox]', form).map(c => c.name)); for (const [k, v] of fd.entries()) { if (multi.has(k)) (o[k] = o[k] || []).push(v); else o[k] = typeof v === 'string' ? v.trim() : v; } multi.forEach(k => { if (!(k in o)) o[k] = []; }); return o; }
-
-async function nextCode(coll, prefix, width) {
-  const nums = D[coll].map(r => String(r.code || r._id || '')).filter(s => s.startsWith(prefix)).map(s => parseInt(s.slice(prefix.length), 10)).filter(n => !isNaN(n));
-  let n = (nums.length ? Math.max(...nums) : 0) + 1;
-  for (let i = 0; i < 6; i++) { const code = prefix + pad(n, width); const snap = await S.db.collection(coll).doc(code).get(); if (!snap.exists) return code; n++; }
-  return prefix + pad(n, width) + '-' + Math.random().toString(36).slice(2, 5);
-}
-function base(extra) { const c = curCycle(); const cyc = D.cycles.find(x => x.code === (extra && extra.cycleId)) || c; return Object.assign({studyPhase: (cyc && cyc.studyPhase) || phase(), cycleId: c ? c.code : '', author: myCode() || '—', createdAt: new Date().toISOString()}, extra); }
-async function create(coll, prefix, width, data) {
-  if (!S.db) { toast('لا يمكن الحفظ: قاعدة البيانات غير متاحة في هذا العرض.'); return null; }
-  try { const code = await nextCode(coll, prefix, width); await S.db.collection(coll).doc(code).set(Object.assign({code}, data)); return code; }
-  catch (e) { handleDbErr(e); return null; }
-}
-function handleDbErr(e) {
-  const c = e && e.code;
-  if (c === 'quota_exceeded') toast('امتلأت سعة قاعدة البيانات. صدّري البيانات ثم احذفي سجلات قديمة.');
-  else if (c === 'invalid_argument' || c === 'permission-denied') toast('لم يُحفظ: ليست لديكِ صلاحية الكتابة. اطلبي من صاحبة المنصة مشاركتها معكِ بصلاحية الاستخدام.');
-  else toast('تعذّر الحفظ مؤقتًا. حاولي مرة أخرى بعد لحظات.');
-}
-
-/* =========================================================
-   3. The shared context block (subject → class → lesson → cycle → date)
-   ========================================================= */
-function ctxBlockFull(n, pre = {}) {
-  const subj = pre.subject || S.subj || mySubject() || '';
-  const c = curCycle();
-  return `<section class="stepsec">${stepHead(n, 'السياق', 'المقرر والفصل والدرس. يُحفظ اسم الفصل وعدد طالباته تلقائيًا مع السجل.')}
-  <div role="radiogroup" aria-label="المقرر"><div class="hint" style="margin-bottom:6px">المقرر</div><div class="seg">${SUBJ.map(s => `<label class="sub-${s.k}" style="background:var(--surface)"><input type="radio" name="subject" value="${esc(s.n)}"${s.n === subj ? ' checked' : ''} required>${esc(s.n)}</label>`).join('')}</div></div>
-  <div class="grid">
-    ${field('الفصل', `<select name="classId" id="f-classId" data-classfor>${classOptions(subj, pre.classId)}</select>`, 'يظهر فصول المقرر المختار فقط')}
-    <div class="grid" data-newclass hidden style="grid-column:1/-1">${field('اسم الفصل الجديد', inp('newClassName', '', 'placeholder="مثال: 2/3 علمي"'))}${field('عدد الطالبات', inp('newClassCount', '', 'type="number" min="1" max="60" inputmode="numeric" placeholder="28"'))}</div>
-    ${field('اسم الدرس', inp('lessonTitle', pre.lessonTitle, `list="dl-lessons" placeholder="${esc(subj ? (SUBJ_BY_NAME[subj].ex) : 'مثال: تفسير منحنيات السرعة–الزمن')}"`), 'اكتبيه أو اختاريه من الدروس السابقة')}
-    ${field('دورة البحث', `<select name="cycleId" id="f-cycleId">${opts(D.cycles.map(x => [x.code, x.code + ' · ' + (x.title || '')]), pre.cycleId || (c && c.code), 'بلا دورة')}</select>`)}
-    ${field('التاريخ', inp('date', pre.date || today(), 'type="date"'))}
-  </div><datalist id="dl-lessons">${latestLessons().map(l => `<option value="${esc(l.title)}">${esc(l.lessonId + ' · ' + (l.subject || ''))}</option>`).join('')}</datalist></section>`;
-}
-function classOptions(subj, sel) {
-  const list = D.classes.filter(c => !subj || c.subject === subj);
-  return `<option value="">${list.length ? 'اختاري الفصل' : 'لا فصول لهذا المقرر بعد'}</option>` + list.map(c => `<option value="${esc(c.code)}"${c.code === sel ? ' selected' : ''}>${esc(classLabel(c))}</option>`).join('') + `<option value="__new">＋ إضافة فصل جديد…</option>`;
-}
-async function ctxResolve(o) {
-  if (o.classId === '__new') {
-    if (!o.newClassName) { toast('اكتبي اسم الفصل الجديد وعدد طالباته.'); return false; }
-    const code = await create('classes', 'CL', 2, {name: o.newClassName, count: Number(o.newClassCount) || null, subject: o.subject || '', teacher: myCode(), createdAt: new Date().toISOString()});
-    if (!code) return false; o.classId = code;
-    o.className = o.newClassName; o.studentCount = Number(o.newClassCount) || null;
-  } else { const cl = D.classes.find(c => c.code === o.classId); o.className = cl ? cl.name : ''; o.studentCount = cl ? Number(cl.count) || null : null; }
-  delete o.newClassName; delete o.newClassCount;
-  const ls = latestLessons().find(l => l.title && o.lessonTitle && l.title.trim() === o.lessonTitle.trim()) || lessonOf(o.lessonId);
-  if (ls) { o.lessonId = ls._id; o.lessonCode = ls.lessonId + '-V' + ls.version; if (!o.lessonTitle) o.lessonTitle = ls.title; } else { o.lessonId = o.lessonId || ''; o.lessonCode = ''; }
-  return true;
-}
-function ctxMeta(r) {
-  const bits = [];
-  if (r.subject) bits.push(subjChip(r.subject));
-  if (r.className) bits.push(`<span>الفصل ${esc(r.className)}${r.studentCount ? ' · ' + esc(r.studentCount) + ' طالبة' : ''}</span>`);
-  if (r.lessonTitle) bits.push(`<span>الدرس: ${esc(r.lessonTitle)}${r.lessonCode ? ' (' + esc(r.lessonCode) + ')' : ''}</span>`);
-  if (r.cycleId) bits.push(`<span>${esc(r.cycleId)}</span>`);
-  bits.push(`<span>${esc(fmtDate(r.date || r.createdAt))}${r.time ? ' · ' + esc(r.time) : ''}</span>`);
-  if (r.author) bits.push(`<span>${esc(r.author)}</span>`);
-  return `<div class="meta">${bits.join('')}</div>`;
-}
-const practiceChips = p => (p || []).length ? `<div class="row">${p.map(k => `<span class="chip plain">${esc(PRACTICE_NAME[k] || k)}</span>`).join('')}</div>` : '';
-const practiceStep = (n, sel) => `<section class="stepsec">${stepHead(n, 'الممارسات المهنية', 'أي ممارسات ظهرت في هذا العمل؟ هذا ما نتتبّع به نمو الممارسة عبر الدورات.')}${checks('practices', PRACTICES, sel)}</section>`;
-function subjBar() {
-  return `<div class="row" role="group" aria-label="تصفية حسب المقرر"><span class="small muted">المقرر:</span><button class="btn small ${S.subj ? 'ghost' : ''}" data-act="subj" data-s="">الكل</button>${SUBJ.map(s => `<button class="btn small ghost sub-${s.k}" style="${S.subj === s.n ? 'box-shadow:inset 0 0 0 2px currentColor' : ''}" data-act="subj" data-s="${esc(s.n)}" aria-pressed="${S.subj === s.n}">${esc(s.n)}</button>`).join('')}</div>`;
-}
-
-/* =========================================================
-   4. Word diff
-   ========================================================= */
-function tokens(s) { return String(s || '').split(/(\s+)/).filter(t => t !== ''); }
-function diff(a, b) {
-  const A = tokens(a), B = tokens(b); const n = A.length, m = B.length;
-  if (n * m > 4000000) return {html: esc(b), kept: 0, added: 0, removed: 0, sim: 0};
-  const L = Array.from({length: n + 1}, () => new Uint16Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  let i = 0, j = 0, out = '', kept = 0, added = 0, removed = 0; const isW = t => /\S/.test(t);
-  while (i < n && j < m) {
-    if (A[i] === B[j]) { out += esc(A[i]); if (isW(A[i])) kept++; i++; j++; }
-    else if (L[i + 1][j] >= L[i][j + 1]) { if (isW(A[i])) { out += `<del>${esc(A[i])}</del>`; removed++; } i++; }
-    else { if (isW(B[j])) { out += `<ins>${esc(B[j])}</ins>`; added++; } else out += esc(B[j]); j++; }
-  }
-  while (i < n) { if (isW(A[i])) { out += `<del>${esc(A[i])}</del>`; removed++; } i++; }
-  while (j < m) { if (isW(B[j])) { out += `<ins>${esc(B[j])}</ins>`; added++; } else out += esc(B[j]); j++; }
-  const sim = (kept + removed) ? Math.round(kept / Math.max(kept + removed, kept + added) * 100) : 0;
-  return {html: out, kept, added, removed, sim};
-}
-const diffSummary = d => `<div class="grid"><div class="stat"><b>${d.sim}%</b><span>ما بقي من نص AI</span></div><div class="stat"><b>${d.kept}</b><span>كلمة أبقتها المعلمة</span></div><div class="stat"><b>${d.added}</b><span>كلمة أضافتها</span></div><div class="stat"><b>${d.removed}</b><span>كلمة حذفتها</span></div></div>`;
-const suggestDecision = d => d.sim >= 90 ? 'accepted' : (d.sim <= 25 ? 'rejected' : 'modified');
-function aiDiffHtml(a, b) { if (!a || !b) return '<div class="empty">تظهر المقارنة هنا بعد وجود النصّين: مخرج الذكاء الاصطناعي ونسخة المعلمة.</div>'; const d = diff(a, b); return `${diffSummary(d)}<p class="tiny muted">الأخضر: ما أضافته المعلمة. الأحمر المشطوب: ما حذفته من نص الذكاء الاصطناعي.</p><div class="diff">${d.html}</div>`; }
-
-/* =========================================================
-   5. Views
-   ========================================================= */
-const V = {};
-const SLOTS = {};
-
-/* ---- Home: what do I do now? ---- */
-function setupStatus() {
-  return [
-    ['اربطي حسابك برمزك', !!myMember(), 'setup'],
-    ['اكتبي مشكلة التعلّم المشتركة', !!D.settings.learningProblem, 'setup'],
-    ['أضيفي فصولك (اسم الفصل وعدد الطالبات)', D.classes.length > 0, 'setup'],
-    ['أنشئي دورة البحث الأولى', D.cycles.length > 0, 'setup']];
-}
-function phaseCard(c, idx, compact) {
-  const p = phasesOf(c)[idx]; const ev = p.ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 ? true : n >= target}; });
-  const done = ev.filter(e => e.ok).length;
-  return `<div class="row between"><div><span class="chip ${idx + 1 === Number(c.phase) ? 'solid' : 'plain'}">المرحلة ${idx + 1} من ${phasesOf(c).length} · ${esc(p.wk)}</span><h2 style="margin-top:6px">${esc(p.n)}</h2></div><span class="small muted">${done} من ${ev.length} أدلة مكتملة</span></div>
-  <p><b>الهدف:</b> ${esc(p.goal)}</p>
-  <div class="cols"><div><h3>ماذا نفعل؟</h3><ul style="margin:6px 0 0;padding-inline-start:20px">${p.do.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted" style="margin-top:8px">المسؤولة: ${esc(p.who)} · المخرج: ${esc(p.out)}</p></div>
-  <div><h3>متى تكتمل المرحلة؟</h3><ul class="checklist" style="margin-top:6px">${ev.map(e => `<li><span class="tick ${e.ok ? 'y' : 'n'}" aria-hidden="true">${e.ok ? '✓' : ''}</span><span>${esc(e.t)} <span class="muted small">(${e.n}${e.target ? ' من ' + e.target : ''})</span></span></li>`).join('')}</ul></div></div>
-  ${compact ? '' : ''}<div class="row">${p.act.map(([l, a, t]) => `<button class="btn ${a === 'rec' ? '' : 'ghost'} small" data-act="${a === 'rec' ? 'go-rec' : (a === 'meet' ? 'go-meet' : (a === 'report' ? 'go-report' : 'nav'))}" data-view="${esc(t)}" data-t="${esc(t)}">${esc(l)}</button>`).join('')}</div>`;
-}
-V.home = () => {
-  const st = setupStatus(); const setupDone = st.every(s => s[1]); const c = curCycle(); const me = myMember();
-  const myTasks = D.tasks.filter(t => t.status !== 'done' && (!me || t.owner === me.code || t.owner === 'الفريق')).sort((a, b) => String(a.due).localeCompare(String(b.due)));
-  const nextMeeting = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
-  return `<div><h1>ماذا أفعل الآن؟</h1><p class="lede">${me ? `مرحبًا ${esc(me.code)} (${esc(me.discipline || '')}). ` : ''}هذه الصفحة تخبرك بالمرحلة الحالية، وما المطلوب منك هذا الأسبوع، وأين تسجّلينه.</p></div>
-  ${setupDone ? '' : `<section class="panel"><h2>ابدئي هنا: إعداد المنصة في 4 خطوات</h2><p class="lede small">تُنجز مرة واحدة. بعدها تعمل كل الصفحات بفصولكِ ودورتكِ.</p><ul class="checklist">${st.map(([t, ok]) => `<li><span class="tick ${ok ? 'y' : 'n'}" aria-hidden="true">${ok ? '✓' : ''}</span><span>${esc(t)}</span></li>`).join('')}</ul><div><button class="btn" data-act="nav" data-view="setup">افتحي الإعداد</button></div></section>`}
-  ${c ? `<section class="panel">${phaseCard(c, phaseIdx(c))}</section>` : ''}
-  <section class="panel"><h2>سجّلي بسرعة</h2><div class="grid">
-    ${Object.entries(CONTEXTS).map(([k, x]) => `<button class="action" data-act="go-rec" data-t="${k}"><b>${icon(x.icon)}${esc(x.n)}</b><span>${esc(x.d)}</span></button>`).join('')}
-    <button class="action" data-act="go-rec" data-t="evidence"><b>${icon('evidence')}دليل تعلّم طالبة</b><span>درجات 0–4 في التفسير والنقل والاستقلالية والتحقق.</span></button>
-    <button class="action" data-act="nav" data-view="ai"><b>${icon('ai')}تصميم أو تعديل درس مع AI</b><span>يحفظ ما كتبه الذكاء الاصطناعي وما غيّرتِه ولماذا.</span></button></div></section>
-  <div class="cols">
-    <section class="panel"><h2>مهامي</h2><div class="ledger">${myTasks.length ? myTasks.slice(0, 6).map(taskRow).join('') : '<div class="empty">لا مهام مفتوحة لك. تُوزَّع المهام في نهاية كل اجتماع من «الاجتماعات والقرارات».</div>'}</div>
-    ${nextMeeting ? `<div class="ok">الاجتماع القادم ${esc(nextMeeting.code)}: ${esc(fmtDate(nextMeeting.date))}${nextMeeting.goal ? ' — ' + esc(nextMeeting.goal) : ''}</div>` : '<div class="note">لا اجتماع قادم مسجّل. الإيقاع المقترح: اجتماع أسبوعي ثابت 45 دقيقة.</div>'}</section>
-    <section class="panel"><h2>المقررات المشاركة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>
-  </div>`;
-};
-function taskRow(t) {
-  const late = t.status !== 'done' && t.due && t.due < today();
-  return `<div class="rec"><div class="row between"><b>${esc(t.title)}</b><span class="chip ${t.status === 'done' ? 'plain' : (late ? 'warn' : '')}">${t.status === 'done' ? 'مكتملة' : (late ? 'متأخرة' : 'مفتوحة')}</span></div>
-  <div class="meta"><span>${esc(t.code)}</span><span>المسؤولة: ${esc(t.owner || '—')}</span><span>الاستحقاق: ${esc(fmtDate(t.due))}</span>${t.phase ? '<span>المرحلة ' + esc(t.phase) + '</span>' : ''}${t.meetingId ? '<span>من ' + esc(t.meetingId) + '</span>' : ''}
-  <button class="btn ghost small" data-act="task-toggle" data-id="${esc(t._id)}">${t.status === 'done' ? 'إعادة فتح' : 'تمّت ✓'}</button></div></div>`;
-}
-
-/* ---- Record hub ---- */
-V.rec = () => {
-  const t = S.recType;
-  if (!t) return `<div><h1>سجّلي</h1><p class="lede">اختاري متى تسجّلين. كل نوع له نموذج قصير بخطوات وأمثلة، ويُحفظ مع المقرر والفصل وعدد الطالبات والدرس.</p></div>
-  <div class="grid wide">${Object.entries(CONTEXTS).map(([k, x]) => `<button class="action" data-act="go-rec" data-t="${k}"><b>${icon(x.icon)}${esc(x.n)}</b><span>${esc(x.d)}</span><span class="tiny">${D.notes.filter(n => n.context === k).length} سجل</span></button>`).join('')}
-  <button class="action" data-act="go-rec" data-t="evidence"><b>${icon('evidence')}دليل تعلّم طالبة</b><span>درجات مرمّزة بمقياس 0–4 لخط الأساس وأثناء الدورة وبعدها.</span><span class="tiny">${D.evidence.length} دليل</span></button></div>
-  ${help('كيف أختار؟', `<ul><li><b>أثناء الحصة:</b> وأنتِ تلاحظين درس بحث، أو مباشرة بعده.</li><li><b>خارج الحصة:</b> وأنتِ تخططين أو تصححين أو تجربين شيئًا في فصلك.</li><li><b>في الاجتماع:</b> ما عرضتِه وما قيل ومقترحك.</li><li><b>بعد الاجتماع:</b> تأملك الشخصي وما ستغيّرينه.</li></ul>`)}`;
-  if (t === 'evidence') return V.evidenceForm();
-  const x = CONTEXTS[t]; let body = '';
-  if (t === 'in') body = inBody();
-  if (t === 'out') body = `<section class="stepsec">${stepHead(2, 'ماذا عملتِ؟', 'دوّني ما فعلتِه أو لاحظتِه خارج درس البحث.')}
-    ${field('نوع العمل', `<select name="kind" id="f-kind">${opts(OUT_KINDS)}</select>`, 'اختيار النوع الصحيح يُكمل أدلة المرحلة تلقائيًا')}
-    ${field('التدوين', area('text', '', 'class="tall" required placeholder="ماذا فعلتِ؟ ماذا لاحظتِ في أعمال الطالبات؟ ما الذي فاجأكِ؟"'))}
-    ${field('الدليل المرتبط', inp('evidenceRef', '', 'placeholder="مثال: E0012 أو 6 عينات أعمال مجهّلة"'))}</section>`;
-  if (t === 'meeting') body = `<section class="stepsec">${stepHead(2, 'في الاجتماع', 'دوّني ما يخصك: ما عرضتِه، ما قيل، ومقترحك.')}
-    ${field('الاجتماع', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.slice().sort(byNewest).map(m => [m.code, m.code + ' · ' + fmtDate(m.date)]), (D.meetings.slice().sort(byNewest)[0] || {}).code, 'اجتماع غير مسجّل')}</select>`)}
-    <div class="grid wide">${field('الأدلة التي عرضتُها', area('discussed', '', 'placeholder="مثال: 4 من 6 بطاقات خروج في فصلي فسّرت دون نقل"'))}${field('ما الذي نوقش؟', area('text', '', 'required'))}${field('مقترحي للفريق', area('proposal'))}</div></section>`;
-  if (t === 'after') body = `<section class="stepsec">${stepHead(2, 'تأمل بعد الاجتماع', 'ستة أسئلة قصيرة. جملة أو جملتان لكل سؤال تكفي.')}
-    ${field('بعد أي اجتماع؟', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.slice().sort(byNewest).map(m => [m.code, m.code + ' · ' + fmtDate(m.date)]), (D.meetings.slice().sort(byNewest)[0] || {}).code, '—')}</select>`)}
-    <div class="grid wide">${field('ماذا لاحظتُ؟', area('noticed', '', 'required'))}${field('ماذا تعلّمتُ؟', area('learned'))}${field('ما الممارسة التي تغيّرت لديّ؟', area('change'))}${field('ما الدليل على ذلك؟', area('evidenceRef'))}${field('ماذا سأغيّر في حصتي القادمة؟', area('next'))}${field('ما السؤال الذي ما زال يحتاج بحثًا؟', area('openQuestion'))}</div></section>`;
-  const list = bySubj(D.notes.filter(n => n.context === t));
-  return `<div class="row"><button class="btn ghost small" data-act="go-rec" data-t="">→ كل أنواع التسجيل</button></div>
-  <div><h1>${esc(x.n)}</h1><p class="lede">${esc(x.d)}</p><div style="margin-top:6px">${whoBadge({in:'أثناء الحصة',out:'خارج الحصة',meeting:'في الاجتماع',after:'بعد الاجتماع (تأمل)'}[t])}</div></div>
-  <form class="panel" data-form="note" data-ctx="${t}">${ctxBlock(1)}${body}${practiceOpt(3)}${attachField()}${noteButtons(t)}</form>
-  <section class="panel"><div class="row between"><h2>سجل «${esc(x.n)}»</h2>${subjBar()}</div><div class="ledger" data-slot="notes">${SLOTS.notes()}</div></section>`;
-};
-const NOTE_LAB = {target:'الطالبة/المجموعة',moment:'نوع اللحظة',level:'مستواها في خط الأساس',task:'المهمة',observed:'ما حدث',stumble:'التعثّر',promptUsed:'الدعم/التلميح',supportType:'نوع الدعم',response:'الاستجابة',learningEvidence:'دليل التعلّم',kind:'النوع',text:'التدوين',meetingId:'الاجتماع',discussed:'الأدلة المعروضة',proposal:'المقترح',noticed:'لاحظتُ',learned:'تعلّمتُ',change:'ما تغيّر',evidenceRef:'الدليل',next:'سأغيّر',openQuestion:'سؤال مفتوح'};
-SLOTS.notes = () => {
-  const list = bySubj(D.notes.filter(n => n.context === S.recType)).sort(byNewest);
-  if (!list.length) return `<div class="empty">لا سجلات ${S.subj ? 'في ' + esc(S.subj) + ' ' : ''}بعد. أول سجل تحفظينه سيظهر هنا.</div>`;
-  return list.map(n => `<div class="rec"><div class="row"><span class="chip plain">${esc(n.code)}</span></div>${ctxMeta(n)}<dl class="kv">${Object.keys(NOTE_LAB).filter(k => n[k]).map(k => `<dt>${NOTE_LAB[k]}</dt><dd>${esc(n[k])}</dd>`).join('')}</dl>${practiceChips(n.practices)}${filesHtml(n.files)}</div>`).join('');
-};
-
-/* ---- Evidence ---- */
-V.evidenceForm = () => {
-  if (S.evMode === 'class') return evidenceBulk();
-  const sc = n => `<select name="${n}" id="f-${n}" aria-label="${n}">${opts([['', '—'], ...RUBRIC.map((r, i) => [String(i), r])])}</select>`;
-  return `<div class="row"><button class="btn ghost small" data-act="go-rec" data-t="">→ كل أنواع التسجيل</button></div>
-  <div><h1>دليل تعلّم طالبة</h1><p class="lede">سجل واحد لكل طالبة في كل نقطة قياس. هذه الدرجات هي ما نقيس به أثر المشروع على الطالبات.</p><div style="margin-top:6px">${whoBadge('دليل تعلّم طالبة')}</div></div>
-  ${evTabs()}<form class="panel" data-form="evidence">${ctxBlock(1)}
-    <section class="stepsec">${stepHead(2, 'الطالبة ونقطة القياس', 'استخدمي رمز الطالبة الثابت نفسه في كل القياسات حتى نتتبع نموها.')}
-    <div class="grid">${field('رمز الطالبة', inp('studentCode', '', 'placeholder="S014" required autocomplete="off"'), 'S ثم ثلاثة أرقام')}${field('نقطة القياس', `<select name="timePoint" id="f-timePoint">${opts(TIMEPOINTS)}</select>`)}${field('نوع الدليل', `<select name="evidenceType" id="f-evidenceType">${opts(['بطاقة خروج','منتج طالبة','إجابة شفهية','مهمة نقل','مهمة خط أساس/بعدية'])}</select>`)}${field('الدعم الذي احتاجته', `<select name="supportLevel" id="f-supportLevel">${opts(['بلا دعم','دعم 1: تلميح','دعم 2: بطاقة موجّهة','دعم 3: مثال محلول'])}</select>`)}</div></section>
-    <section class="stepsec">${stepHead(3, 'الدرجات', 'المقياس نفسه في جميع المقررات المشاركة حتى تمكن المقارنة.')}
-    <div class="grid">${INDICATORS.map(([k, l, d]) => field(l, sc(k), d)).join('')}</div>
-    ${help('مقياس 0–4: كيف أصحّح؟', `<ul><li><b>0</b> لا يظهر المؤشر.</li><li><b>1 بداية:</b> محاولة غير صحيحة أو تكرار للمعلومة.</li><li><b>2 جزئي:</b> صحيح جزئيًا أو بعد دعم كبير.</li><li><b>3 واضح:</b> صحيح مع نقص بسيط أو بدعم خفيف.</li><li><b>4 متمكّن:</b> صحيح كامل ومستقل ومبرَّر.</li></ul><p>مثال (الفيزياء، التفسير): 2 = «السرعة تزيد» دون ربط بالميل · 4 = «الميل ثابت موجب، إذن السرعة تزيد بمقدار ثابت كل ثانية».</p>`)}
-    <div class="grid">${field('استُخدم الذكاء الاصطناعي في المهمة؟', `<select name="aiUse" id="f-aiUse">${opts(['لا','نعم'])}</select>`)}${field('الأداة وإصدارها', `<select name="instrument" id="f-instrument">${opts(D.instruments.map(i => [i.code + '-' + i.version, i.code + ' ' + i.name + ' ' + i.version]), 'INS02-v0.1')}</select>`)}${field('ملاحظة (بلا أسماء)', inp('note'))}</div></section>
-    ${attachField()}<div class="row"><button class="btn" type="submit">حفظ الدليل</button><button class="btn ghost" type="submit" data-keep="1">حفظ وإدخال طالبة أخرى</button></div></form>
-  <section class="panel"><div class="row between"><h2>آخر الأدلة</h2>${subjBar()}</div><div class="scroll" data-slot="evtable">${SLOTS.evtable()}</div></section>`;
-};
-SLOTS.evtable = () => {
-  const list = bySubj(D.evidence).slice().sort(byNewest).slice(0, 60);
-  if (!list.length) return '<div class="empty">لا أدلة بعد.</div>';
-  return `<table><thead><tr><th>الرمز</th><th>المقرر</th><th>الطالبة</th><th>الفصل</th><th>النقطة</th><th>تفسير</th><th>نقل</th><th>استقلالية</th><th>تحقق</th><th>الدعم</th><th>الدورة</th><th>مرفق</th></tr></thead><tbody>${list.map(e => `<tr><td>${esc(e.code)}</td><td>${subjChip(e.subject)}</td><td>${esc(e.studentCode)}</td><td>${esc(e.className)}</td><td>${esc(e.timePoint)}</td><td>${esc(e.explanation ?? '')}</td><td>${esc(e.transfer ?? '')}</td><td>${esc(e.independence ?? '')}</td><td>${esc(e.verification ?? '')}</td><td>${esc(e.supportLevel)}</td><td>${esc(e.cycleId)}</td><td>${(e.files || []).map(f => `<a href="${esc(f.url || ('/_blob/' + f.id))}" target="_blank" rel="noopener">فتح</a>`).join(' ')}</td></tr>`).join('')}</tbody></table>`;
-};
-function impactTable(evs) {
-  const rows = SUBJ.map(s => { const se = evs.filter(e => e.subject === s.n); return {s: s.n, cells: TIMEPOINTS.map(([tp]) => { const x = se.filter(e => e.timePoint === tp); return {n: x.length, v: INDICATORS.map(([k]) => avg(x.map(e => e[k]).filter(v => v != null)))}; })}; });
-  return `<table><thead><tr><th>المقرر</th><th>المؤشر</th>${TIMEPOINTS.map(t => `<th>${esc(t[1])}</th>`).join('')}<th>التغيّر (بعدي − قبلي)</th></tr></thead><tbody>${rows.map(r => INDICATORS.map(([k, l], ii) => { const b = r.cells[0].v[ii], p = r.cells[2].v[ii]; return `<tr>${ii === 0 ? `<td rowspan="4">${subjChip(r.s)}<div class="tiny muted">ن: ${r.cells.map(c => c.n).join(' / ')}</div></td>` : ''}<td>${esc(l)}</td>${r.cells.map(c => `<td>${f1(c.v[ii])}</td>`).join('')}<td><b>${b != null && p != null ? (p - b >= 0 ? '+' : '') + (p - b).toFixed(1) : '—'}</b></td></tr>`; }).join('')).join('')}</tbody></table>`;
-}
-V.evidence = () => `<div><h1>أدلة تعلّم الطالبات</h1><p class="lede">متوسطات المؤشرات الأربعة لكل مقرر في كل نقطة قياس. هذا الجدول هو «أثر الطالبات» في التقارير والرسالة.</p></div>
-  <div class="row"><button class="btn" data-act="go-rec" data-t="evidence">＋ إدخال دليل تعلّم</button><button class="btn ghost" data-act="go-report" data-t="impact">تقرير أثر الطالبات</button></div>
-  <section class="panel"><h2>المتوسطات (0–4)</h2><div class="scroll">${impactTable(D.evidence)}</div><p class="tiny muted">ن = عدد الأدلة في كل نقطة (قبلي / أثناء / بعدي / احتفاظ). لا تُفسَّر الفروق قبل اكتمال القياس البعدي.</p></section>
-  <section class="panel"><div class="row between"><h2>كل الأدلة</h2>${subjBar()}</div><div class="scroll" data-slot="evtable">${SLOTS.evtable()}</div></section>`;
-
-/* ---- Cycle ---- */
-V.cycle = () => {
-  const c = curCycle();
-  if (!c) return `<div><h1>دورة بحث الدرس</h1></div><div class="empty">لا توجد دورة بعد. أنشئي الدورة الأولى من «الإعداد».</div><div><button class="btn" data-act="nav" data-view="setup">الإعداد</button></div>`;
-  const cur = (phaseIdx(c) + 1); const sel = S.phaseSel || cur;
-  return `<div><h1>دورة بحث الدرس ${esc(c.code)}</h1><p class="lede">${esc(c.title || '')} · ${c.mode === 'parallel' ? 'دورة متوازية: ' + esc(cySubj(c).join('، ')) + '. سبع مراحل في نحو 7 أسابيع، وكل المواد تمر بها معًا.' : 'مادة درس البحث: ' + esc(c.subject || '—') + '. اثنتا عشرة مرحلة في نحو ستة أسابيع.'}</p></div>
-  <div class="steps" role="tablist" aria-label="المراحل">${phasesOf(c).map((p, i) => `<button class="step ${i + 1 < cur ? 'done' : (i + 1 === cur ? 'now' : '')} ${i + 1 === sel ? 'sel' : ''}" role="tab" aria-selected="${i + 1 === sel}" data-act="phase-sel" data-p="${i + 1}"><i>${i + 1}</i>${esc(p.n)}</button>`).join('')}</div>
-  <section class="panel">${phaseCard(c, sel - 1)}</section>
-  ${S.canEdit ? `<section class="panel"><h2>إدارة المرحلة (القائدة)</h2><p class="lede small">انقلي الدورة إلى المرحلة التالية عند اكتمال أدلتها. إن نقلتِها مع نقص، يبقى النقص ظاهرًا في المرحلة وفي تقرير الدورة.</p><div class="row"><button class="btn ghost" data-act="phase" data-id="${esc(c._id)}" data-d="-1"${cur <= 1 ? ' disabled' : ''}>المرحلة السابقة</button><button class="btn" data-act="phase" data-id="${esc(c._id)}" data-d="1"${cur >= 12 ? ' disabled' : ''}>الانتقال إلى المرحلة ${Math.min(12, cur + 1)}</button><button class="btn ghost" data-act="go-report" data-t="cycle">تقرير الدورة</button></div></section>` : ''}`;
-};
-
-/* ---- AI studio ---- */
-V.aiStudio = () => `  ${help('كيف أستخدم الاستوديو؟ (4 خطوات)', `<ul><li>حدّدي المقرر والفصل والدرس ونوع الطلب، واكتبي ما تُظهره أدلة طالباتك.</li><li>اضغطي «صياغة الطلب» ثم «أرسلي إلى Claude»، أو الصقي مخرج أداة أخرى كما هو.</li><li>اضغطي «ابدئي التحرير من المقترح» وعدّلي النص بحكمك المهني. تظهر الفروق ملوّنة.</li><li>اختاري القرار واكتبي سببه، ثم احفظي. يُحفظ النص المعتمد نسخةً جديدة من الدرس.</li></ul>`)}
-  <form class="panel" data-form="ai" id="aiForm">${ctxBlock(1)}
-    <section class="stepsec">${stepHead(2, 'الطلب', 'كلما كان الطلب مبنيًا على أدلة طالباتك، كان المقترح أنفع.')}
-    <div class="grid">${field('نوع الطلب', `<select name="mode" id="f-mode">${opts(AI_MODES)}</select>`)}${field('الأداة', `<select name="tool" id="f-tool">${opts(AI_TOOLS)}</select>`)}${field('الصف', inp('grade', '', 'placeholder="مثال: الثاني الثانوي"'))}${field('النسخة المراد تعديلها', `<select name="baseLessonId" id="f-baseLessonId">${opts(latestLessons().map(l => [l._id, l._id + ' · ' + l.title]), '', 'لا يوجد (درس جديد)')}</select>`)}</div>
-    <div class="grid">${field('في أي مرحلة من البروتوكول؟', `<select name="stage" id="f-stage">${opts(AI_STAGES, 'S3')}</select>`, 'انظري تبويب «مساعد بُرهان»')}${field('نوع الاستخدام', `<select name="scope" id="f-scope">${opts(['جماعي في اجتماع','فردي'])}</select>`)}${field('رموز الأدلة المستخدمة', inp('evidenceRefs', '', 'placeholder="مثال: E0007–E0030، O0091"'))}${field('قرار التمايز المرتبط', `<select name="decisionLink" id="f-decisionLink">${opts(D.decisions.slice().sort(byNewest).map(d => [d.code, d.code + ' · ' + String(d.decision || '').slice(0, 40)]), '', 'يُربط لاحقًا')}</select>`, 'يمكن ربطه بعد الاجتماع')}</div>
-    <div class="grid wide">${field('الهدف أو مشكلة التعلّم', area('goal', D.settings.learningProblem || ''))}${field('الدليل المجهّل الذي استُخدم: ماذا تُظهر أدلة الطالبات؟', area('studentEvidence', '', 'placeholder="مثال: 11 من 24 بطاقة خروج فسّرت الإجابة دون نقلها لموقف جديد"'), 'بلا أسماء')}</div>
-    ${field('تفاصيل إضافية', area('details', '', 'placeholder="مثال: الحصة 45 دقيقة، الفصل فيه تفاوت كبير في المعرفة السابقة"'))}
-    <div class="row"><button class="btn ghost" type="button" data-act="ai-compose">صياغة الطلب</button><span class="small muted">يمكنك تعديل الطلب قبل إرساله.</span></div>
-    ${field('الطلب (Prompt)', area('prompt', '', 'class="tall"'), 'في الأداة الخارجية: الصقي هنا الطلب الذي استخدمتِه فعلًا')}
-    <div class="note">لا تُدخلي أسماء الطالبات أو أي بيانات تعريفية في الطلب.</div></section>
-    <section class="stepsec">${stepHead(3, 'ما كتبه الذكاء الاصطناعي', 'يُحفظ كما هو دون تعديل، حتى نعرف لاحقًا ماذا غيّرت المعلمة.')}
-    <div class="row"><button class="btn" type="button" data-act="ai-send" id="aiSend">أرسلي إلى Claude</button><button class="btn ghost" type="button" data-act="ai-stop" id="aiStop" hidden>إيقاف</button><span class="small muted" id="aiStatus" role="status"></span></div>
-    ${field('مخرج الذكاء الاصطناعي', area('aiOutput', '', 'class="tall" placeholder="يظهر هنا مقترح Claude، أو الصقي مخرج الأداة الأخرى كما هو"'))}</section>
-    <section class="stepsec">${stepHead(4, 'ما اعتمدته المعلمة', 'عدّلي المقترح أو اكتبي بديلك. تظهر الفروق تلقائيًا.')}
-    <div class="row"><button class="btn ghost" type="button" data-act="ai-copy">ابدئي التحرير من المقترح</button></div>
-    ${field('النسخة المعتمدة', area('teacherFinal', '', 'class="tall"'))}
-    <div id="aiDiff">${aiDiffHtml('', '')}</div></section>
-    <section class="stepsec">${stepHead(5, 'القرار والسبب', 'يُقترح القرار من نسبة التغيير، ويمكنك تغييره.')}
-    <div class="seg" role="radiogroup" aria-label="القرار">${Object.entries(DEC).map(([k, l]) => `<label><input type="radio" name="decision" value="${k}"${k === 'modified' ? ' checked' : ''}>${l}</label>`).join('')}</div>
-    <div class="grid wide">${field('سبب القرار', area('reason', '', 'required placeholder="مثال: المقترح افترض معرفة سابقة غير متوفرة لدى طالباتي"'))}${field('ماذا غيّرتُ ولماذا؟', area('modification'))}</div></section>
-    ${practiceStep(6)}
-    <label class="row small" style="font-weight:500"><input type="checkbox" name="asVersion" value="1" checked> احفظي النسخة المعتمدة كنسخة جديدة من الدرس</label>
-    <div class="row"><button class="btn" type="submit">حفظ السجل</button></div></form>
-  <section class="panel"><div class="row between"><h2>سجل الاستوديو</h2>${subjBar()}</div><div class="ledger" data-slot="ailist">${SLOTS.ailist()}</div></section>`;
-SLOTS.ailist = () => {
-  const list = bySubj(D.ai).slice().sort(byNewest);
-  if (!list.length) return '<div class="empty">لا سجلات بعد. أول طلب تصميم أو تعديل سيظهر هنا بنصّيه.</div>';
-  return list.map(a => `<div class="rec"><div class="row between"><div class="row"><span class="chip plain">${esc(a.code)}</span><b>${esc(a.mode)}</b><span class="small muted">${esc(a.tool)}</span></div><span class="chip ${a.decision === 'rejected' ? 'warn' : (a.decision === 'accepted' ? 'solid' : '')}">${esc(DEC[a.decision] || '')}</span></div>${ctxMeta(a)}
-  ${a.diffStats ? `<div class="small muted">بقي من نص AI ${a.diffStats.sim}% · أضافت المعلمة ${a.diffStats.added} كلمة · حذفت ${a.diffStats.removed}${a.appliedVersion ? ' · طُبّق في ' + esc(a.appliedVersion) : ''}</div>` : ''}
-  ${a.reason ? `<div class="body"><b>السبب:</b> ${esc(a.reason)}</div>` : ''}${practiceChips(a.practices)}
-  <details data-aiopen="${esc(a._id)}"><summary class="small" style="font-weight:600;cursor:pointer;color:var(--accent)">عرض النصّين والفروق، وتسجيل الأثر</summary><div data-diffhost></div>
-  <form data-form="ai-outcome" data-id="${esc(a._id)}" class="grid wide" style="margin-top:12px">${field('قرار التمايز المرتبط', `<select name="decisionLink">${opts(D.decisions.slice().sort(byNewest).map(d => [d.code, d.code + ' · ' + String(d.decision || '').slice(0, 40)]), a.decisionLink, '—')}</select>`)}${field('الأثر الملحوظ بعد التطبيق', area('observedOutcome', a.observedOutcome))}${field('تأمل', area('reflection', a.reflection))}<div class="row"><button class="btn ghost small" type="submit">حفظ الأثر</button></div></form></details></div>`).join('');
-};
-function lessonText(l) { if (!l) return ''; if (l.body) return l.body; return LESSON_FIELDS.filter(([k]) => l[k]).map(([k, lab]) => lab + ':\n' + l[k]).join('\n\n'); }
-function composePrompt(o) {
-  const cl = D.classes.find(c => c.code === o.classId); const ls = lessonOf(o.baseLessonId);
-  const lines = ['أنتِ مستشارة تربوية تساعد فريق بحث الدرس في مدرسة ثانوية للبنات. اكتبي بالعربية الفصحى الواضحة.', 'المطلوب: ' + o.mode + '.',
-    'المقرر: ' + (o.subject || '—') + ' · الصف: ' + (o.grade || '—') + (cl ? ' · الفصل: ' + cl.name + ' (' + (cl.count || '؟') + ' طالبة)' : (o.newClassName ? ' · الفصل: ' + o.newClassName + ' (' + (o.newClassCount || '؟') + ' طالبة)' : '')),
-    'الدرس: ' + (o.lessonTitle || (ls && ls.title) || '—'), 'الهدف أو مشكلة التعلّم: ' + (o.goal || '—'), 'ما تُظهره أدلة تعلّم الطالبات: ' + (o.studentEvidence || '—')];
-  if (o.details) lines.push('تفاصيل إضافية: ' + o.details);
-  if (ls) lines.push('', 'نص النسخة الحالية من الدرس (' + ls._id + '):', lessonText(ls), '', 'عدّلي الدرس بناءً على الأدلة، واذكري في النهاية قائمة قصيرة بما غيّرتِه ولماذا.');
-  if (o.mode === 'تصميم درس جديد' || o.mode === 'تعديل درس قائم') lines.push('', 'نظّمي الخطة تحت هذه العناوين بالترتيب: ' + LESSON_FIELDS.map(f => f[1]).join('، ') + '.');
-  lines.push('', 'ركّزي على التعليم المتمايز بمستويات دعم واضحة، وأسئلة تكشف التفكير، وأدلة تعلّم قابلة للملاحظة تُصحَّح بمقياس 0–4. لا تستخدمي أسماء طالبات.', 'اكتبي نصًا عاديًا بعناوين واضحة، دون جداول أو رموز تنسيق.');
-  return lines.join('\n');
-}
-
-/* ---- Lessons ---- */
-V.lessons = () => {
-  const groups = {}; bySubj(D.lessons).forEach(l => { (groups[l.lessonId] = groups[l.lessonId] || []).push(l); });
-  const ids = Object.keys(groups).sort(); const all = D.lessons.slice().sort((a, b) => a._id.localeCompare(b._id));
-  return `<div><h1>الدروس ونسخها</h1><p class="lede">كل تعديل نسخة جديدة (V1، V2…) مع ما تغيّر ولماذا والقرار المرتبط. هكذا نُثبت تطور التصميم والممارسة.</p></div>
-  <section class="panel"><div class="row between"><h2>دروس البحث</h2>${subjBar()}</div><div class="ledger">${ids.length ? ids.map(id => { const vs = groups[id].sort((a, b) => a.version - b.version); const last = vs[vs.length - 1]; return `<div class="rec"><div class="row between"><b>${esc(id)} · ${esc(last.title)}</b><div class="row">${vs.map(v => `<span class="chip ${v === last ? 'solid' : 'plain'}">V${v.version}</span>`).join('')}</div></div>${ctxMeta(last)}${vs.filter(v => v.changeNote).map(v => `<div class="small"><b>V${v.version}:</b> ${esc(v.changeNote)}${v.decisionId ? ' (' + esc(v.decisionId) + ')' : ''}${v.aiRecord ? ' · بمساندة ' + esc(v.aiRecord) : ''}</div>`).join('')}<details><summary class="small" style="cursor:pointer;color:var(--accent);font-weight:600">نص آخر نسخة</summary><div class="out">${esc(lessonText(last))}</div></details></div>`; }).join('') : '<div class="empty">لا دروس بعد. اكتبي V1 هنا أو صمّميها من «استوديو الذكاء الاصطناعي».</div>'}</div></section>
-  <section class="panel"><h2>قارني نسختين</h2><div class="grid">${field('النسخة الأقدم', `<select id="cmpA">${opts(all.map(l => [l._id, l._id + ' · ' + l.title]), '', '—')}</select>`)}${field('النسخة الأحدث', `<select id="cmpB">${opts(all.map(l => [l._id, l._id + ' · ' + l.title]), '', '—')}</select>`)}</div><div id="cmpOut"><div class="empty">اختاري نسختين لعرض الفروق.</div></div></section>
-  <form class="panel" data-form="lesson"><h2>درس جديد أو نسخة جديدة</h2>
-    ${ctxBlock(1)}
-    <section class="stepsec">${stepHead(2, 'هل هذه نسخة جديدة من درس سابق؟', 'اختاري الدرس إن كانت نسخة معدّلة، واربطيها بالقرار الذي أدى إلى التعديل.')}
-    <div class="grid">${field('نسخة جديدة من', `<select name="baseLesson" id="f-baseLesson">${opts(latestLessons().map(l => [l.lessonId, l.lessonId + ' · ' + l.title]), '', 'لا — درس جديد')}</select>`)}${field('الصف', inp('grade'))}${field('القرار المرتبط', `<select name="decisionId" id="f-decisionId">${opts(D.decisions.map(d => [d.code, d.code + ' · ' + String(d.decision || '').slice(0, 40)]), '', '—')}</select>`)}</div>
-    ${field('ما الذي تغيّر في هذه النسخة ولماذا؟', area('changeNote'))}</section>
-    <section class="stepsec">${stepHead(3, 'عناصر خطة درس البحث', 'تحت كل عنصر سؤال يوجّه الكتابة. الأهم: نقاط التعثّر ومستويات الدعم وبطاقة الخروج.')}
-    <div class="grid wide">${LESSON_FIELDS.map(([k, l, h]) => field(l, area(k), h)).join('')}</div></section>
-    <div class="row"><button class="btn" type="submit">حفظ النسخة</button></div></form>`;
-};
-async function saveLessonVersion(o, extra) {
-  let lessonId = o.baseLesson; let version = 1;
-  if (lessonId) version = Math.max(...D.lessons.filter(l => l.lessonId === lessonId).map(l => l.version || 1)) + 1;
-  else { const nums = D.lessons.map(l => parseInt(String(l.lessonId).slice(1), 10)).filter(n => !isNaN(n)); lessonId = 'L' + pad((nums.length ? Math.max(...nums) : 0) + 1, 2); }
-  const id = lessonId + '-V' + version; const prev = D.lessons.filter(l => l.lessonId === lessonId).sort((a, b) => b.version - a.version)[0];
-  const doc = base(Object.assign({code: id, lessonId, version, title: o.lessonTitle || (prev && prev.title) || 'درس بلا عنوان', subject: o.subject || (prev && prev.subject) || '', grade: o.grade || (prev && prev.grade) || '', classId: o.classId || '', className: o.className || '', studentCount: o.studentCount || null, cycleId: o.cycleId || '', date: o.date || today(), changeNote: o.changeNote || '', decisionId: o.decisionId || ''}, extra || {}));
-  LESSON_FIELDS.forEach(([k]) => { if (o[k]) doc[k] = o[k]; });
-  try { await S.db.collection('lessons').doc(id).set(doc); return id; } catch (e) { handleDbErr(e); return null; }
-}
-
-/* ---- Meetings ---- */
-const PROTOCOL = ['5 د · افتتاح: هدف الاجتماع والمرحلة الحالية','15 د · عرض الأدلة: كل معلمة 3 دقائق بأدلة من فصلها','15 د · تحليل وقرار: ماذا تعني الأدلة؟ ما البدائل؟ ماذا نقرر؟','5 د · المهام: من يفعل ماذا وحتى متى','5 د · تأمل سريع: جملة من كل عضوة'];
-V.meetings = () => {
-  const t = S.meetTab; const c = curCycle(); const ph = c ? phaseOf(c) : null;
-  const tabs = [['live','اجتماع الآن'],['meetings','الاجتماعات'],['decisions','القرارات'],['tasks','المهام']];
-  let body = '';
-  if (t === 'live') body = liveHtml();
-  if (t === 'meetings') body = `<form class="panel" data-form="meeting"><h2>تسجيل اجتماع</h2>
-    ${help('بروتوكول اجتماع بحث الدرس (45 دقيقة)', `<ul>${PROTOCOL.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`)}
-    <div class="grid">${field('التاريخ', inp('date', today(), 'type="date"'))}${field('الدورة', `<select name="cycleId" id="f-cycleId">${opts(D.cycles.map(x => x.code), c && c.code, '—')}</select>`)}${field('رابط المحضر', inp('minutesLink', '', 'placeholder="رابط Teams أو SharePoint (اختياري)"'))}</div>
-    ${field('الحضور', checks('attendees', D.team.map(m => [m.code, m.code + ' · ' + (m.discipline || '')])))}
-    <div class="grid wide">${field('الهدف', area('goal', ph ? 'المرحلة ' + c.phase + ' (' + ph.n + '): ' + ph.goal : ''))}${field('جدول الأعمال', area('agenda', PROTOCOL.join('\n'), 'class="tall"'))}${field('الأدلة التي نوقشت', area('evidence', '', 'placeholder="رموز أدلة أو ملخص ما عُرض"'))}${field('ملخص القرارات', area('decisionsSummary', '', 'placeholder="تُسجَّل القرارات التفصيلية في تبويب «القرارات»"'))}</div>
-    <div class="row"><button class="btn" type="submit">حفظ الاجتماع</button></div></form>
-    <section class="panel"><h2>الاجتماعات</h2><div class="ledger">${D.meetings.slice().sort(byNewest).map(m => `<div class="rec"><div class="meta"><span class="chip plain">${esc(m.code)}</span><span>${esc(fmtDate(m.date))}</span><span>${esc(m.cycleId || '')}</span><span>الحضور: ${esc((m.attendees || []).join('، ') || '—')}</span></div><dl class="kv">${[['goal','الهدف'],['evidence','الأدلة'],['decisionsSummary','القرارات']].filter(([k]) => m[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(m[k])}</dd>`).join('')}</dl><div class="row between"><span class="small muted">${D.notes.filter(n => n.meetingId === m.code).length} ملاحظة · ${D.decisions.filter(d => d.meetingId === m.code).length} قرار · ${D.tasks.filter(x => x.meetingId === m.code).length} مهمة</span><button class="btn ghost small" data-act="minutes" data-m="${esc(m.code)}">محضر الاجتماع</button></div></div>`).join('') || '<div class="empty">لا اجتماعات بعد.</div>'}</div></section>`;
-  if (t === 'decisions') body = `<form class="panel" data-form="decision"><h2>تسجيل قرار</h2><p class="lede small">القرار الجيد يجيب: ما الموقف؟ ما الدليل؟ ما البدائل؟ لماذا اخترنا هذا؟ ماذا سنفعل؟</p>
-    <div class="grid">${field('الاجتماع', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.slice().sort(byNewest).map(m => [m.code, m.code + ' · ' + fmtDate(m.date)]), (D.meetings.slice().sort(byNewest)[0] || {}).code, '—')}</select>`)}${field('الدورة', `<select name="cycleId" id="f-cycleId">${opts(D.cycles.map(x => x.code), c && c.code, '—')}</select>`)}${field('المقرر المعني', `<select name="subject" id="f-subject">${opts(SUBJ.map(s => s.n), '', 'كل المقررات')}</select>`)}${field('التاريخ', inp('date', today(), 'type="date"'))}</div>
-    <div class="grid wide">${field('الموقف أو المشكلة', area('situation', '', 'placeholder="مثال: الطالبات يفسّرن ولا ينقلن"'))}${field('الدليل', area('evidence', '', 'required placeholder="مثال: 11 من 24 بطاقة خروج (E0007–E0030)"'), 'إلزامي: لا قرار بلا دليل')}${field('البدائل التي نوقشت', area('alternatives'))}${field('القرار', area('decision', '', 'required'))}${field('السبب', area('reason'))}${field('الإجراء', area('action', '', 'placeholder="ماذا سنفعل؟ في أي نسخة من الدرس؟"'))}</div>
-    ${field('سجل الذكاء الاصطناعي المرتبط (إن وُجد)', `<select name="aiLink" id="f-aiLink">${opts(D.ai.slice().sort(byNewest).map(a => [a.code, a.code + ' · ' + a.mode]), '', '—')}</select>`, 'يكمل سلسلة: الدليل ← AI ← الحكم ← القرار')}${field('من شارك في القرار', checks('participants', D.team.map(m => [m.code, m.code])))}
-    <div class="row"><button class="btn" type="submit">حفظ القرار</button></div></form>
-    <section class="panel"><h2>القرارات</h2><div class="ledger">${D.decisions.slice().sort(byNewest).map(d => `<div class="rec"><div class="row between"><div class="row"><span class="chip solid">${esc(d.code)}</span><b>${esc(d.decision)}</b></div><button class="btn ghost small" data-act="dec-status" data-id="${esc(d._id)}">${d.status === 'modified' ? 'عُدّل لاحقًا' : 'مستمر'} · تغيير</button></div><div class="meta">${subjChip(d.subject)}<span>${esc(d.cycleId || '')}</span><span>${esc(d.meetingId || '')}</span><span>${esc(fmtDate(d.date))}</span><span>${esc((d.participants || []).join('، '))}</span></div><dl class="kv">${[['situation','الموقف'],['evidence','الدليل'],['alternatives','البدائل'],['reason','السبب'],['action','الإجراء'],['outcome','النتيجة']].filter(([k]) => d[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(d[k])}</dd>`).join('')}</dl>
-    <form data-form="dec-outcome" data-id="${esc(d._id)}" class="row">${inp('outcome', d.outcome, 'aria-label="النتيجة" placeholder="ماذا حدث بعد تطبيق القرار؟" style="flex:1 1 260px"')}<button class="btn ghost small" type="submit">حفظ النتيجة</button></form></div>`).join('') || '<div class="empty">لا قرارات بعد.</div>'}</div></section>`;
-  if (t === 'tasks') body = `<form class="panel" data-form="task"><h2>مهمة جديدة</h2><div class="grid">${field('المهمة', inp('title', '', 'required placeholder="مثال: إدخال درجات خط الأساس لفصلي"'))}${field('المسؤولة', `<select name="owner" id="f-owner">${opts([...D.team.map(m => [m.code, m.code + ' · ' + (m.discipline || '')]), ['الفريق','الفريق كله']])}</select>`)}${field('الاستحقاق', inp('due', '', 'type="date" required'))}${field('المرحلة', `<select name="phase" id="f-phase">${opts(phasesOf(c).map((p, i) => [i + 1, (i + 1) + ' · ' + p.n]), c && c.phase)}</select>`)}${field('من اجتماع', `<select name="meetingId" id="f-meetingId">${opts(D.meetings.map(m => m.code), '', '—')}</select>`)}</div><div class="row"><button class="btn" type="submit">إضافة المهمة</button></div></form>
-    <section class="panel"><h2>المهام</h2><div class="ledger">${D.tasks.slice().sort((a, b) => (a.status === 'done') - (b.status === 'done') || String(a.due).localeCompare(String(b.due))).map(taskRow).join('') || '<div class="empty">لا مهام بعد.</div>'}</div></section>`;
-  return `<div><h1>الاجتماعات والقرارات</h1><p class="lede">الاجتماع يُنتج قرارات ومهامًا. ملاحظاتك الشخصية في الاجتماع وبعده تُسجَّل من «سجّلي».</p></div>
-  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="meet-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
-};
-
-/* ---- Reports ---- */
-const REPORTS = [
-  ['weekly','التقرير الأسبوعي','للفريق والإدارة · كل أسبوع','ما أُنجز في 7 أيام، المهام المتأخرة، الأدلة الناقصة، الاجتماع القادم.'],
-  ['cycle','تقرير دورة بحث الدرس','للفريق والإدارة · عند إغلاق كل دورة','المشكلة، خط الأساس، تطور الدرس، أبرز الملاحظات والقرارات، الأثر، دور AI، التأملات، التوصيات.'],
-  ['impact','تقرير أثر الطالبات','للفريق والبحث · بعد القياس البعدي','متوسطات المؤشرات الأربعة لكل مقرر قبل وأثناء وبعد.'],
-  ['teachers','تقرير نمو الممارسات','للبحث · قبلي/منتصف/بعدي','قياسات Rubric الممارسات العشر وتكرار ظهورها في السجلات لكل معلمة.'],
-  ['ai','تقرير الذكاء الاصطناعي والقرار','للبحث وللعرض','أنواع الاستخدام، نسب القبول والتعديل والرفض، ما بقي من نصوص AI، أمثلة مجهّلة.'],
-  ['portfolio','ملف الأدلة للعرض','لملتقى مُلهم أو أي جهة · مجهّل','قصة المشروع بالأرقام والأدلة دون أي بيانات فردية.'],
-  ['aichain','الدليل ← AI ← الحكم ← القرار ← النتيجة','للدكتوراه (RQ4) · كل دورة','كل استخدام للذكاء الاصطناعي بسلسلته الكاملة: الدليل، المقترح، الحكم البشري، قرار التمايز، النتيجة.'],
-  ['minutes','محضر اجتماع','للفريق والإدارة · بعد كل اجتماع','الحضور، الهدف، الأدلة، ما دوّنته العضوات، القرارات، المهام، التأملات.']];
-function rpTable(head, rows) { return `<div class="scroll"><table><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${head.length}">لا بيانات بعد.</td></tr>`}</tbody></table></div>`; }
-function phaseGaps(c) { if (!c) return []; const idx = phaseIdx(c); return phasesOf(c)[idx].ev.map(([t, fn]) => { const [n, target] = fn(c); return {t, n, target, ok: target === 0 || n >= target}; }); }
-function buildReport(type, cy) {
-  if (type === 'minutes') return minutesHtml(S.repMeeting);
-  if (type === 'aichain') { const c0 = D.cycles.find(x => x.code === cy) || curCycle(); const rows = chainRows((c0 ? D.ai.filter(a => a.cycleId === c0.code) : D.ai).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))); const st0 = D.settings; return `<h2>الدليل ← مقترح الذكاء الاصطناعي ← الحكم البشري ← قرار التمايز ← النتيجة</h2><div class="rmeta"><span>${esc(st0.projectName || 'بُرهان')}</span>${c0 ? `<span>الدورة ${esc(c0.code)}</span>` : ''}<span>تاريخ الإصدار: ${esc(fmtDate(today()))}</span><span>وضع البيانات: ${esc(phase())}</span></div><h3>الملخص</h3>${rpTable(['المؤشر','القيمة'], [['سجلات الذكاء الاصطناعي', rows.length], ['سلاسل مكتملة (5 حلقات)', rows.filter(r => r.complete).length], ['قبول / تعديل / رفض', rows.filter(r => r.a.decision === 'accepted').length + ' / ' + rows.filter(r => r.a.decision === 'modified').length + ' / ' + rows.filter(r => r.a.decision === 'rejected').length], ['قبل الدرس (اجتماع 1–4) / بعده (اجتماع 5–6)', rows.filter(r => ['S1','S2','S3','S4'].includes(r.a.stage)).length + ' / ' + rows.filter(r => ['S5','S6'].includes(r.a.stage)).length], ['جماعي / فردي', rows.filter(r => String(r.a.scope).startsWith('جماعي')).length + ' / ' + rows.filter(r => r.a.scope === 'فردي').length]])}<h3>السلاسل</h3>${chainTable(rows)}<h3>قراءة التقرير</h3><ul><li>السلسلة المكتملة تُظهر كيف أسهم الذكاء الاصطناعي في قرار تمايز محدد، وأين عدّله الحكم البشري.</li><li>الحلقات الناقصة تُكمل من الاستوديو (عرض النصين وتسجيل الأثر) أو من القرارات.</li></ul>`; }
-  const c = D.cycles.find(x => x.code === cy) || curCycle(); const st = D.settings;
-  const head = (title, sub) => `<h2>${esc(title)}</h2><div class="rmeta"><span>${esc(st.projectName || 'بُرهان')}${st.school ? ' · ' + esc(st.school) : ''}</span>${c ? `<span>الدورة ${esc(c.code)} · ${esc(c.title || '')}</span>` : ''}<span>${esc(sub || '')}</span><span>تاريخ الإصدار: ${esc(fmtDate(today()))}</span><span>وضع البيانات: ${esc(phase())}</span><span>أعدّته: ${esc(myCode() || '—')}</span></div>`;
-  const cy_ = arr => c ? arr.filter(r => r.cycleId === c.code) : arr;
-  if (type === 'weekly') {
-    const from = daysAgo(7); const wk = arr => arr.filter(r => dateOf(r) >= from);
-    const late = D.tasks.filter(t => t.status !== 'done' && t.due && t.due < today()); const doneW = D.tasks.filter(t => t.status === 'done' && (t.doneAt || '') >= from);
-    const nextM = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
-    return head('التقرير الأسبوعي', 'من ' + fmtDate(from) + ' إلى ' + fmtDate(today())) +
-      `<h3>المرحلة الحالية</h3><p>${c ? 'المرحلة ' + esc(c.phase) + ': ' + esc(phaseOf(c).n) + ' — ' + esc(phaseOf(c).goal) : 'لا دورة نشطة.'}</p>
-      <h3>ما سُجّل هذا الأسبوع حسب المقرر</h3>${rpTable(['المقرر','أثناء الحصة','خارج الحصة','في/بعد الاجتماع','أدلة تعلّم','سجلات AI','نسخ دروس'], SUBJ.map(s => { const f = arr => wk(arr).filter(r => r.subject === s.n); return [subjChip(s.n), f(D.notes).filter(n => n.context === 'in').length, f(D.notes).filter(n => n.context === 'out').length, f(D.notes).filter(n => n.context === 'meeting' || n.context === 'after').length, f(D.evidence).length, f(D.ai).length, f(D.lessons).length]; }))}
-      <h3>المهام</h3><p>أُنجزت هذا الأسبوع: <b>${doneW.length}</b> · متأخرة: <b>${late.length}</b></p>${late.length ? rpTable(['المهمة','المسؤولة','الاستحقاق'], late.map(t => [esc(t.title), esc(t.owner), esc(fmtDate(t.due))])) : ''}
-      <h3>أدلة المرحلة الناقصة</h3>${rpTable(['الدليل','الموجود','المطلوب','الحالة'], phaseGaps(c).map(g => [esc(g.t), g.n, g.target || '—', g.ok ? 'مكتمل' : '<b>ناقص</b>']))}
-      <h3>القرارات هذا الأسبوع</h3>${rpTable(['الرمز','القرار','الدليل'], wk(D.decisions).map(d => [esc(d.code), esc(d.decision), esc(d.evidence)]))}
-      <h3>الاجتماع القادم</h3><p>${nextM ? esc(nextM.code) + ' · ' + esc(fmtDate(nextM.date)) + (nextM.goal ? ' — ' + esc(nextM.goal) : '') : 'لم يُحدَّد بعد.'}</p>`;
-  }
-  if (type === 'cycle') {
-    const L = cy_(D.lessons).sort((a, b) => a._id.localeCompare(b._id)); const N = cy_(D.notes); const Dc = cy_(D.decisions); const A = cy_(D.ai); const E = cy_(D.evidence);
-    const stumbles = N.filter(n => n.context === 'in' && n.stumble).slice(0, 6);
-    return head('تقرير دورة بحث الدرس', c ? 'المرحلة الحالية ' + c.phase + ' من 12' : '') +
-      `<h3>١. مشكلة التعلّم وسؤال الاستقصاء</h3><dl class="kv"><dt>المشكلة</dt><dd>${esc(st.learningProblem || '—')}</dd><dt>سؤال الاستقصاء</dt><dd>${esc(st.inquiryQuestion || '—')}</dd><dt>الهدف بعيد المدى</dt><dd>${esc(st.goal || '—')}</dd><dt>المقررات المشاركة</dt><dd>${esc([...new Set([...N, ...E].map(r => r.subject).filter(Boolean))].join('، ') || '—')}</dd></dl>
-      <h3>٢. الفريق والفصول</h3>${rpTable(['الرمز','التخصص','الدور'], D.team.map(m => [esc(m.code), esc(m.discipline), esc(m.role)]))}${rpTable(['الفصل','المقرر','عدد الطالبات'], D.classes.map(x => [esc(x.name), subjChip(x.subject), esc(x.count)]))}
-      <h3>٣. الإنجاز حسب المراحل</h3>${rpTable(['المرحلة','الأدلة'], phasesOf(c).map((p, i) => [esc((i + 1) + '. ' + p.n), p.ev.map(([t, fn]) => { const [n, tg] = c ? fn(c) : [0, 0]; return esc(t) + ': ' + n + (tg ? '/' + tg : '') + (tg === 0 || n >= tg ? ' ✓' : ''); }).join('<br>')]))}
-      <h3>٤. تطور درس البحث</h3>${rpTable(['النسخة','المقرر','ما تغيّر ولماذا','القرار','AI'], L.map(l => [esc(l._id), subjChip(l.subject), esc(l.changeNote || (l.version === 1 ? 'النسخة الأولى' : '')), esc(l.decisionId || ''), esc(l.aiRecord || '')]))}
-      <h3>٥. أبرز لحظات التعثّر الملحوظة</h3>${rpTable(['المقرر','الطالبة/المجموعة','التعثّر','الدعم','الاستجابة'], stumbles.map(n => [subjChip(n.subject), esc(n.target), esc(n.stumble), esc(n.promptUsed || n.supportType), esc(n.response)]))}
-      <h3>٦. القرارات المبنية على الأدلة</h3>${rpTable(['الرمز','الدليل','القرار','السبب','النتيجة'], Dc.map(d => [esc(d.code), esc(d.evidence), esc(d.decision), esc(d.reason), esc(d.outcome || '—')]))}
-      <h3>٧. أثر الطالبات (متوسطات 0–4)</h3><div class="scroll">${impactTable(E)}</div>
-      <h3>٨. دور الذكاء الاصطناعي: الدليل ← المقترح ← الحكم ← القرار ← النتيجة</h3>${chainTable(chainRows(A))}<p>${A.length} استخدام · قبول ${A.filter(a => a.decision === 'accepted').length} · تعديل ${A.filter(a => a.decision === 'modified').length} · رفض ${A.filter(a => a.decision === 'rejected').length}${A.filter(a => a.diffStats).length ? ' · متوسط ما بقي من نصوص AI ' + Math.round(avg(A.filter(a => a.diffStats).map(a => a.diffStats.sim))) + '%' : ''}</p>
-      <h3>٩. تأملات المعلمات</h3>${rpTable(['المعلمة','ما تغيّر في ممارستي','ما سأغيّره','سؤال مفتوح'], N.filter(n => n.context === 'after').map(n => [esc(n.author), esc(n.change), esc(n.next), esc(n.openQuestion)]))}
-      <h3>١٠. توصيات الدورة التالية</h3><p class="muted">تكتبها القائدة بعد مناقشة التقرير: ما الذي نستمر فيه؟ ما الذي نغيّره؟ ما مشكلة الدورة التالية؟</p>`;
-  }
-  if (type === 'impact') { const E = cy_(D.evidence); return head('تقرير أثر الطالبات', 'ن = ' + E.length + ' دليل · ' + new Set(E.map(e => e.studentCode)).size + ' طالبة (برموز)') + `<h3>المتوسطات حسب المقرر ونقطة القياس</h3><div class="scroll">${impactTable(E)}</div><h3>قراءة الجدول</h3><ul><li>المقياس 0–4 موحّد في جميع المقررات المشاركة (INS02).</li><li>يُقرأ التغيّر بحذر في وضع Pilot، ومع أعداد صغيرة.</li><li>المقارنة الأدق: الطالبة نفسها قبل وبعد (متوفرة في ملف Student_Evidence_Long).</li></ul>`; }
-  if (type === 'teachers') { const P = D.practice; const tags = code => { const f = {}; [...D.notes, ...D.ai].filter(r => r.author === code).forEach(r => (r.practices || []).forEach(p => { f[p] = (f[p] || 0) + 1; })); return f; };
-    return head('تقرير نمو الممارسات المهنية', 'Rubric 1–4 + وسوم السجلات') + D.team.map(m => { const tg = tags(m.code); const rec = tp => (P.filter(p => p.teacher === m.code && p.measurePoint === tp).sort(byNewest)[0] || {}).scores || {}; return `<h3>${esc(m.code)} · ${esc(m.discipline || '')}</h3>${rpTable(['الممارسة','قبلي','منتصف','بعدي','ظهورها في السجلات'], PRACTICES.map(([k, l]) => [esc(l), rec('Baseline')[k] ?? '—', rec('Midpoint')[k] ?? '—', rec('Post')[k] ?? '—', tg[k] || 0]))}`; }).join(''); }
-  if (type === 'ai') { const A = cy_(D.ai); const byMode = AI_MODES.map(m => [m, A.filter(a => a.mode === m)]).filter(x => x[1].length);
-    return head('تقرير الذكاء الاصطناعي والقرار المهني', A.length + ' سجل') + `<h3>حسب نوع الاستخدام</h3>${rpTable(['النوع','العدد','قبول','تعديل','رفض','متوسط ما بقي من نص AI'], byMode.map(([m, x]) => [esc(m), x.length, x.filter(a => a.decision === 'accepted').length, x.filter(a => a.decision === 'modified').length, x.filter(a => a.decision === 'rejected').length, x.filter(a => a.diffStats).length ? Math.round(avg(x.filter(a => a.diffStats).map(a => a.diffStats.sim))) + '%' : '—']))}
-      <h3>حسب المقرر</h3>${rpTable(['المقرر','العدد','قبول','تعديل','رفض'], SUBJ.map(s => { const x = A.filter(a => a.subject === s.n); return [subjChip(s.n), x.length, x.filter(a => a.decision === 'accepted').length, x.filter(a => a.decision === 'modified').length, x.filter(a => a.decision === 'rejected').length]; }))}
-      <h3>أمثلة على القرار البشري</h3>${rpTable(['السجل','النوع','القرار','السبب','الأثر الملحوظ'], A.filter(a => a.reason).slice(0, 8).map(a => [esc(a.code), esc(a.mode), esc(DEC[a.decision]), esc(a.reason), esc(a.observedOutcome || '—')]))}`; }
-  if (type === 'portfolio') { const E = cy_(D.evidence); const A = cy_(D.ai); const L = cy_(D.lessons);
-    return head('ملف الأدلة: بُرهان', 'نسخة مجهّلة للعرض الخارجي') + `<h3>المشكلة</h3><p>${esc(st.learningProblem || '—')}</p>
-      <h3>بالأرقام</h3>${rpTable(['المؤشر','القيمة'], [['المعلمات', D.team.length], ['المقررات', subjCount([...D.notes, ...D.evidence, ...D.classes])], ['الطالبات المشاركات (حسب الفصول)', D.classes.reduce((a, x) => a + (Number(x.count) || 0), 0)], ['دورات بحث الدرس', D.cycles.length], ['نسخ الدروس', L.length], ['ملاحظات صفية', cy_(D.notes).filter(n => n.context === 'in').length], ['أدلة تعلّم', E.length], ['قرارات مبنية على أدلة', cy_(D.decisions).filter(d => d.evidence).length], ['استخدامات AI موثّقة بقرار بشري', A.length]])}
-      <h3>من الدليل إلى القرار</h3>${rpTable(['الدليل','القرار','الأثر'], cy_(D.decisions).slice(0, 5).map(d => [esc(d.evidence), esc(d.decision), esc(d.outcome || '—')]))}
-      <h3>تطور الدرس</h3>${rpTable(['النسخة','ما تغيّر'], L.map(l => [esc(l._id), esc(l.changeNote || 'النسخة الأولى')]))}
-      <h3>ماذا تغيّر لدى الطالبات؟</h3><div class="scroll">${impactTable(E)}</div>
-      <h3>كيف دعم الذكاء الاصطناعي القرار؟</h3><p>${A.length} استخدام: قبول ${A.filter(a => a.decision === 'accepted').length} · تعديل ${A.filter(a => a.decision === 'modified').length} · رفض ${A.filter(a => a.decision === 'rejected').length}. الذكاء الاصطناعي يقترح، والمعلمة تقرّر.</p>
-      <h3>كيف تطبّق مدرسة أخرى بُرهان؟</h3><p>انظري «دليل القيادة والتطبيق»: فريق من 3–5 معلمات من مقررات مختلفة، اجتماع أسبوعي 45 دقيقة، دورة من 12 مرحلة في نحو 6 أسابيع.</p><p class="tiny muted">لا يتضمن هذا الملف أي اسم أو بيانات فردية لطالبة أو معلمة.</p>`; }
-  return '';
-}
-V.reports = () => {
-  const t = S.repType; const r = REPORTS.find(x => x[0] === t);
-  return `<div><h1>التقارير</h1><p class="lede">تُولَّد من بياناتكم مباشرة، فلا تُكتب مرتين. اختاري التقرير، راجعي المعاينة، ثم نزّليه.</p></div>
-  <div class="grid">${REPORTS.map(([k, n, who]) => `<button class="action" data-act="rep" data-t="${k}" aria-pressed="${k === t}" style="${k === t ? 'border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)' : ''}"><b>${icon('reports')}${esc(n)}</b><span>${esc(who)}</span></button>`).join('')}</div>
-  <section class="panel"><div class="row between"><div><h2>${esc(r[1])}</h2><p class="small muted">${esc(r[3])}</p></div><div class="row">${t === 'minutes' ? field('الاجتماع', `<select id="repMeeting">${opts(D.meetings.slice().sort(byNewest).map(m => [m.code, m.code + ' · ' + fmtDate(m.date)]), S.repMeeting)}</select>`) : ''}${field('الدورة', `<select id="repCycle">${opts(D.cycles.map(c => c.code), (curCycle() || {}).code, 'كل الدورات')}</select>`)}</div></div>
-  <div class="row"><button class="btn" data-act="rep-dl" data-fmt="html"${S.downloads ? '' : ' disabled'}>تنزيل التقرير (HTML)</button><button class="btn ghost" data-act="rep-copy">نسخ النص</button><span class="tiny muted">افتحي الملف في المتصفح ثم «طباعة ← حفظ PDF»، أو افتحيه في Word.</span></div></section>
-  <article class="report" id="repOut">${buildReport(t, (curCycle() || {}).code)}</article>`;
-};
-
-/* ---- Research ---- */
-const DATASETS = [['Student_Evidence_Long','أدلة الطالبات: صف لكل طالبة × نقطة قياس × مؤشر'],['Teacher_Practice_Long','ممارسات المعلمات: صف لكل معلمة × نقطة × ممارسة'],['AI_Decision_Log','استوديو AI: نص AI ونص المعلمة والقرار والسبب'],['Notes_Qualitative','الملاحظات والتأملات للتحليل النوعي'],['Decisions_Log','سجل القرارات'],['Lesson_Versions','نسخ الدروس بنصوصها'],['Process_Timeline','الخط الزمني لكل الأحداث']];
-V.research = () => {
-  const t = S.resTab; const tabs = [['map','خريطة البحث'],['practice','قياس ممارسات المعلمات'],['export','التصدير للتحليل'],['tools','أدوات القياس']];
-  let body = '';
-  if (t === 'map') { const freq = {}; [...D.notes, ...D.ai].forEach(r => (r.practices || []).forEach(p => { freq[p] = (freq[p] || 0) + 1; })); const mx = Math.max(1, ...Object.values(freq));
-    body = `<section class="panel"><h2>من السؤال إلى البيانات</h2><p class="lede small">كل سؤال بحث مرتبط بمكان في المنصة يُجمع فيه دليله أثناء العمل اليومي.</p><div class="scroll"><table><thead><tr><th>السؤال</th><th>البناء</th><th>المؤشرات</th><th>الأداة</th><th>مصدره في بُرهان</th><th>التوقيت</th><th>التحليل</th></tr></thead><tbody>${D.rqs.slice().sort((a, b) => a.code.localeCompare(b.code)).map(r => `<tr><td><b>${esc(r.code)}</b><div class="small">${esc(r.question)}</div></td><td>${esc(r.construct)}</td><td>${esc(r.indicators)}</td><td>${esc(r.instrument)}</td><td>${esc(r.source)}</td><td>${esc(r.time)}</td><td>${esc(r.analysis)}</td></tr>`).join('')}</tbody></table></div></section>
-    <section class="panel"><h2>الممارسات الأكثر حضورًا في السجلات</h2><div class="bars">${PRACTICES.map(([k, l]) => `<div class="bar"><span>${l}</span><div class="meter"><span style="width:${Math.round((freq[k] || 0) / mx * 100)}%"></span></div><b>${freq[k] || 0}</b></div>`).join('')}</div></section>`; }
-  if (t === 'practice' && !isResearch()) body = '<div class="note">قياس ممارسات المعلمات تملؤه الباحثة أو القائدة.</div>';
-  else if (t === 'practice') body = `<form class="panel" data-form="practice"><h2>قياس ممارسات معلمة (Rubric 1–4)</h2><p class="lede small">يقيسه مقيِّم (القائدة أو الباحثة) ثلاث مرات: قبل الدورة الأولى، في المنتصف، وفي النهاية، بالاستناد إلى خطط الدروس والملاحظات والقرارات.</p>
-    <div class="grid">${field('المعلمة', `<select name="teacher" id="f-teacher">${opts(D.team.map(m => [m.code, m.code + ' · ' + (m.discipline || '')]))}</select>`)}${field('نقطة القياس', `<select name="measurePoint" id="f-measurePoint">${opts(T_POINTS)}</select>`)}${field('التاريخ', inp('date', today(), 'type="date"'))}${field('الأداة', `<select name="instrument" id="f-instrument">${opts(D.instruments.map(i => [i.code + '-' + i.version, i.code + ' ' + i.version]), 'INS01-v0.1')}</select>`)}</div>
-    ${help('مستويات Rubric', '<ul><li><b>1 ناشئ:</b> الممارسة غائبة أو عرضية.</li><li><b>2 نامٍ:</b> تظهر بتوجيه من الفريق.</li><li><b>3 متمكّن:</b> تظهر بانتظام وبمبادرة ذاتية.</li><li><b>4 متقدّم:</b> تظهر وتنقلها المعلمة لزميلاتها.</li></ul>')}
-    <div class="grid">${PRACTICES.map(([k, l]) => field(l, `<select name="p_${k}" id="f-p_${k}">${opts([['', '—'], ['1', '1 ناشئ'], ['2', '2 نامٍ'], ['3', '3 متمكّن'], ['4', '4 متقدّم']])}</select>`)).join('')}</div>
-    <div class="row"><button class="btn" type="submit">حفظ القياس</button></div></form>`;
-  if (t === 'export') body = `<section class="panel"><h2>تصدير مجهّل للتحليل</h2><p class="lede small">ملفات CSV بصيغة طويلة مناسبة لـ SPSS وR وExcel وPower BI، والنصوص لـ NVivo وMAXQDA. لا يُخلط Pilot مع Formal، ويُسجَّل كل تصدير.</p>
-    <div class="grid">${field('وضع البيانات', `<select id="exPhase">${opts(['Pilot','Formal'], phase())}</select>`)}${field('الدورة', `<select id="exCycle">${opts(D.cycles.map(c => c.code), '', 'كل الدورات')}</select>`)}${field('المقرر', `<select id="exSubj">${opts(SUBJ.map(s => s.n), '', 'كل المقررات')}</select>`)}</div>
-    ${isResearch() ? '' : '<div class="note">التصدير للباحثة والقائدة.</div>'}<div class="ledger">${DATASETS.map(([k, l]) => `<div class="rec"><div class="row between"><div><b>${k}.csv</b><div class="small muted">${l}</div></div><button class="btn ghost small" data-act="export" data-ds="${k}"${S.downloads && isResearch() ? '' : ' disabled'}>تصدير</button></div></div>`).join('')}<div class="rec"><div class="row between"><div><b>حزمة Microsoft 365 (zip)</b><div class="small muted">كل القوائم كملفات CSV جاهزة للاستيراد في Microsoft Lists وPower Apps وPower BI</div></div><button class="btn small" data-act="m365"${S.downloads && isResearch() ? '' : ' disabled'}>تنزيل الحزمة</button></div></div></div></section>
-    <section class="panel"><h2>سجل التصدير</h2><div class="scroll">${D.exports.length ? `<table><thead><tr><th>الرمز</th><th>التاريخ</th><th>الملف</th><th>المرشحات</th><th>الصفوف</th><th>بواسطة</th></tr></thead><tbody>${D.exports.slice().sort(byNewest).map(x => `<tr><td>${esc(x.code)}</td><td>${esc(fmtDate(x.createdAt))}</td><td>${esc(x.dataset)}</td><td>${esc(x.filters)}</td><td>${esc(x.rows)}</td><td>${esc(x.author)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">لا تصديرات بعد.</div>'}</div></section>`;
-  if (t === 'tools') body = `<section class="panel"><h2>أدوات القياس وإصداراتها</h2><p class="lede small">لا تُستبدل نسخة أداة مستخدمة؛ كل تعديل إصدار جديد. الدراسة الرسمية تبدأ بأدوات معتمدة وموافقة أخلاقية موثّقة.</p><div class="scroll"><table><thead><tr><th>الرمز</th><th>الأداة</th><th>الإصدار</th><th>الحالة</th><th>المشاركون</th><th>التوقيت</th><th>ملاحظات</th></tr></thead><tbody>${D.instruments.slice().sort((a, b) => a.code.localeCompare(b.code)).map(i => `<tr><td><b>${esc(i.code)}</b></td><td>${esc(i.name)}</td><td>${esc(i.version)}</td><td><span class="chip ${i.status === 'Approved' ? 'solid' : 'warn'}">${esc(i.status)}</span></td><td>${esc(i.participants)}</td><td>${esc(i.timing)}</td><td>${esc(i.notes)}</td></tr>`).join('')}</tbody></table></div></section>`;
-  return `<div><h1>البحث والبيانات</h1><p class="lede">كل ما يُسجَّل يُخزَّن بمعرّفات ثابتة ووضع بيانات، فيتحول لاحقًا إلى بيانات رسالة الدكتوراه دون جمع مزدوج.</p></div>
-  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="res-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
-};
-
-/* ---- Playbook (leader guide) ---- */
-V.playbook = () => {
-  const t = S.pbTab; const tabs = [['design','تصميم الدراسة'],['start','ما أحتاجه للبدء'],['roles','الأدوار'],['who','من يملأ ماذا'],['m365','الربط بـ Microsoft 365'],['rhythm','الإيقاع والاجتماع'],['evidence','الأدلة وشكلها'],['reports','التقارير'],['quality','معايير الجودة'],['school','لأي مدرسة']];
-  const T = (h, rows) => `<div class="scroll"><table><thead><tr>${h.map(x => `<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(x => `<td>${x}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-  let body = '';
-  if (t === 'design') body = `<section class="panel"><h2>التصميم المقترح لتصلح البيانات للرسالة</h2><p class="lede small">اقتراح للنقاش مع المشرف ولجنة الأخلاقيات، والقرار النهائي لكِ.</p>${T(['القرار','المقترح','السبب'], [
-    ['عدد الدورات','دورة Pilot واحدة الآن + 3 دورات Formal بعد الموافقات (5–6 أسابيع لكل دورة)','سؤال تطور الممارسات (RQ3) يحتاج 3 نقاط زمنية على الأقل؛ والـPilot يختبر الأدوات ولا يدخل الرسالة'],
-    ['دروس البحث','درس بحث واحد مشترك في كل دورة: V1 تنفذه معلمة، وV2 تعيد تطبيقه معلمة من مقرر آخر','هذا جوهر بحث الدرس، ويُظهر أثر القرار المبني على الدليل'],
-    ['المقررات','درس البحث يتنقل: الدورة 1 فيزياء، 2 رياضيات، 3 كيمياء أو تقنية رقمية؛ وكل معلمة تطبّق الاستراتيجية في فصلها كل دورة','أدلة الطالبات من جميع المقررات المشاركة، ومقارنة بين التخصصات'],
-    ['ما نقيسه','المهارة المشتركة لا محتوى الدرس: التفسير، النقل، الاستقلالية، التحقق بمقياس 0–4 موحّد','يسمح بالمقارنة عبر المقررات وعبر الزمن'],
-    ['الطالبات','الفصول نفسها والطالبات أنفسهن طوال الدراسة، برموز ثابتة S001…','تتبّع نمو الطالبة نفسها (بيانات طولية)'],
-    ['المرحلة','مرحلة دراسية واحدة، ويفضّل صف تدرّس طالباته المعلمات الأربع (تحقّقي من ذلك في مدرستك)','إثبات انتقال المهارة عبر المقررات لدى الطالبات أنفسهن'],
-    ['المقارنة','اختياري: شعبة مقارنة لمن لديها شعبتان من الصف نفسه، تُقاس فقط وتأخذ الاستراتيجية بعد انتهاء الدراسة','يقوّي نسبة التحسّن إلى المشروع لا إلى مرور الوقت'],
-    ['نقاط القياس','الطالبات: قبل الدورة 1 · بعد كل دورة · احتفاظ بعد 3–4 أسابيع من الأخيرة. المعلمات: قبلي · منتصف (بعد الدورة 2) · بعدي','يغطي RQ1 وRQ2 وRQ3'],
-    ['المنهج','مختلط بطابع البحث القائم على التصميم: كمّي للطالبات (أزواج قبل/بعد، حجم أثر، نموذج متعدد المستويات)، ودراسة حالة متعددة للمعلمات الأربع','عدد المعلمات صغير على الإحصاء، كبير على العمق النوعي']])}</section>
-    <section class="panel"><h2>الخط الزمني المقترح</h2>${T(['الفترة','العمل','وضع البيانات'], [['الآن (4–6 أسابيع)','دورة تجريبية C01 كاملة: تجريب الأدوات والمنصة والإيقاع','Pilot'],['بعدها','تعديل الأدوات (إصدارات جديدة)، اعتماد خطة البحث، الموافقة الأخلاقية وموافقات المشاركات','—'],['الفصل التالي','قياس قبلي ← الدورات الرسمية C02 وC03 وC04 ← قياس بعدي ← احتفاظ','Formal'],['بعد الجمع','التصدير المجهّل والتحليل وكتابة النتائج','Formal']])}<p class="small muted">في «الإعداد» يُحدَّد وضع كل دورة (Pilot أو Formal)، ونوع كل شعبة (تدخّل أو مقارنة).</p></section>`;
-  if (t === 'start') body = `<section class="panel"><h2>قبل البدء: ما تحتاجه القائدة</h2><ul class="checklist">${[
-    ['موافقة الإدارة','على تخصيص اجتماع أسبوعي ثابت (45 دقيقة) في الجدول.'],['الفريق','3–5 معلمات، معلمة على الأقل من كل مقرر: التقنية الرقمية، الرياضيات، الكيمياء، الفيزياء.'],
-    ['فصل لكل معلمة','فصل واحد تطبّق فيه وتجمع منه الأدلة طوال المشروع، باسمه وعدد طالباته.'],['ميثاق الفريق','الهدف، الأدوار، موعد الاجتماع، قاعدة «نلاحظ تعلّم الطالبات لا أداء المعلمة».'],
-    ['الرموز والخصوصية','رموز T للمعلمات وS للطالبات. ملف الربط بالأسماء عند القائدة فقط، خارج المنصة.'],['أداتا قياس مبدئيتان','مقياس 0–4 لتعلّم الطالبات (INS02) وRubric الممارسات (INS01)، تُجرَّبان في Pilot.'],
-    ['الإعداد في المنصة','ربط الحسابات، الفصول، المشكلة المشتركة، والدورة الأولى.'],['للدكتوراه','لا تُفعَّل البيانات الرسمية (Formal) قبل اعتماد الخطة والموافقة الأخلاقية.']].map(([a, b]) => `<li><span class="tick n" aria-hidden="true"></span><span><b>${esc(a)}:</b> ${esc(b)}</span></li>`).join('')}</ul></section>
-    <section class="panel"><h2>الخطة الزمنية لدورة واحدة (6 أسابيع)</h2>${T(['الأسبوع','المراحل','أهم مخرج'], [['1','1 التشخيص · 2 خط الأساس','مشكلة مشتركة + درجات قبلية'],['2','3 التخطيط · 4 تصميم درس البحث','خطة V1'],['3','5 التنفيذ · 6 الملاحظة · 7 جمع الأدلة','ملاحظات صفية + أدلة'],['4','8 تحليل الأدلة · 9 إعادة التصميم','قرارات + V2'],['5','10 إعادة التطبيق · 11 قياس الأثر','ملاحظات V2 + درجات بعدية'],['6','12 التأمل','تأملات + تقرير الدورة']])}</section>`;
-  if (t === 'roles') body = `<section class="panel"><h2>الأدوار والمسؤوليات</h2>${T(['الدور','من','المسؤوليات','ما تسجّله في المنصة'], [
-    ['قائدة المشروع (ميسّرة)','معلمة واحدة','تدير الإيقاع، تقود الاجتماع بالبروتوكول، تنقل الدورة بين المراحل، تراجع جاهزية الأدلة، تصدر التقارير','الاجتماعات، القرارات، المهام، المراحل'],
-    ['المعلمة المنفّذة','معلمة درس البحث في الدورة','تكتب V1، تنفّذ الدرس، تجمع بطاقات الخروج','الدروس، استوديو AI، خارج الحصة، الأدلة'],
-    ['الملاحِظات','2–3 من الفريق','تتابع كل منهن مجموعة أو طالبتين برموزهن','أثناء الحصة'],
-    ['كل معلمة في فصلها','الجميع','خط الأساس والقياس البعدي، تجريب ما قرره الفريق، التأمل','الأدلة، خارج الحصة، بعد الاجتماع'],
-    ['موثّقة الاجتماع','بالتناوب','تكتب ملخص القرارات والمهام','الاجتماعات، القرارات'],
-    ['الباحثة','القائدة أو باحثة مستقلة','أدوات القياس وإصداراتها، قياس الممارسات، التصدير','البحث والبيانات']])}</section>`;
-  if (t === 'rhythm') body = `<section class="panel"><h2>الأسبوع النموذجي</h2>${T(['اليوم','العمل','أين يُسجَّل'], [['الأحد','كل معلمة تراجع مهامها من «ماذا أفعل الآن؟»','—'],['الأحد–الثلاثاء','العمل في الفصول: تطبيق، ملاحظة، جمع أدلة','أثناء الحصة · خارج الحصة · الأدلة'],['الأربعاء','اجتماع الفريق 45 دقيقة بالبروتوكول','الاجتماعات · القرارات · المهام · في الاجتماع'],['الأربعاء/الخميس','تأمل قصير من كل معلمة','بعد الاجتماع'],['الخميس','القائدة تصدر التقرير الأسبوعي','التقارير']])}</section>
-    <section class="panel"><h2>بروتوكول اجتماع بحث الدرس (45 دقيقة)</h2><ol style="margin:0;padding-inline-start:22px">${PROTOCOL.map(p => `<li>${esc(p)}</li>`).join('')}</ol><p class="small muted">قواعد الحوار: نبدأ بالدليل لا بالرأي · نتحدث عن تعلّم الطالبات لا عن أداء الزميلة · كل قرار يُكتب مع دليله.</p></section>`;
-  if (t === 'evidence') body = `<section class="panel"><h2>الأدلة التي نحتاجها وشكلها</h2>${T(['الدليل','من','متى','شكله (الحقول)','أين','يخدم'], [
-    ['ملاحظة أثناء الحصة','الملاحِظات','في درس البحث','الوقت، رمز الطالبة/المجموعة، ما حدث، التعثّر، الدعم، الاستجابة، دليل التعلّم','سجّلي ← أثناء الحصة','المدرسة · RQ1 · RQ3'],
-    ['تدوين خارج الحصة','كل معلمة','أسبوعيًا','نوع العمل، النص، الدليل المرتبط','سجّلي ← خارج الحصة','المدرسة · RQ3'],
-    ['دليل تعلّم طالبة','كل معلمة','قبل/أثناء/بعد/احتفاظ','رمز الطالبة، المقرر، الفصل، النقطة، 4 درجات 0–4، الدعم','سجّلي ← دليل تعلّم','RQ2 · ملهم'],
-    ['خطة درس بنسخها','المنفّذة','V1 ثم V2…','13 عنصرًا + ما تغيّر ولماذا + القرار','الدروس','RQ1 · RQ3 · ملهم'],
-    ['سجل AI','من استخدمته','عند كل استخدام جوهري','الطلب، نص AI، نص المعلمة، الفروق، القرار، السبب، الممارسات','استوديو AI','RQ4'],
-    ['قرار الفريق','موثّقة الاجتماع','في الاجتماع','الموقف، الدليل، البدائل، القرار، السبب، الإجراء، النتيجة','الاجتماعات ← القرارات','RQ3 · RQ4 · ملهم'],
-    ['تأمل','كل معلمة','بعد كل اجتماع','6 أسئلة','سجّلي ← بعد الاجتماع','RQ3 · RQ5'],
-    ['قياس الممارسات','الباحثة','قبلي/منتصف/بعدي','10 ممارسات × 1–4','البحث ← قياس الممارسات','RQ1']])}</section>`;
-  if (t === 'reports') body = `<section class="panel"><h2>التقارير</h2>${T(['التقرير','الجمهور','التكرار','المحتوى'], REPORTS.map(r => [`<b>${esc(r[1])}</b>`, esc(r[2].split(' · ')[0]), esc(r[2].split(' · ')[1] || ''), esc(r[3])]))}<div><button class="btn" data-act="nav" data-view="reports">افتحي التقارير</button></div></section>`;
-  if (t === 'quality') body = `<section class="panel"><h2>معايير جودة العمل والبيانات</h2><ul class="checklist">${['كل سجل له مقرر وفصل ودرس ودورة.','كل ملاحظة تصف ما حدث للطالبة، لا حكمًا على المعلمة.','كل قرار مكتوب مع دليله وبدائله وسببه.','كل تعديل على الدرس نسخة جديدة مرتبطة بقرار.','كل استخدام جوهري لـ AI محفوظ بنصّيه وقرار المعلمة.','رمز الطالبة ثابت في كل القياسات.','لا أسماء في أي حقل.','الدرجات بالمقياس نفسه في جميع المقررات المشاركة.','يمكن رواية قصة أي دورة من البداية للنهاية من تقرير الدورة.'].map(x => `<li><span class="tick y" aria-hidden="true">✓</span><span>${esc(x)}</span></li>`).join('')}</ul></section>`;
-  if (t === 'who') body = `<section class="panel"><h2>من يملأ ماذا في المنصة</h2><p class="lede small">ليس كل جزء يملؤه الجميع. كل عضوة تسجّل ما يخصها، والقائدة تراجع وتعتمد. ✓ = تستطيع الكتابة فيه.</p>${T(['القسم','يملؤه','يراجعه أو يشارك','القائدة','المعلمة المشاركة','الباحثة','الملاحِظة'], WHO.map(r => r.map((x, i) => i === 0 ? `<b>${esc(x)}</b>` : esc(x))))}<div class="note">صلاحيات المنصة نفسها تُضبط من قائمة المشاركة: شاركيها مع المعلمات بصلاحية «استخدام» لا «تحرير»، فيستطعن التسجيل ولا يستطعن تغيير الإعداد أو نقل مراحل الدورة. وأدوار الفريق تُحدَّد في «الإعداد».</div></section>`;
-  if (t === 'm365') body = `<section class="panel"><h2>هل تحتاجين Power Apps؟</h2><p class="lede">لا يوجد ربط مباشر ومتزامن بين بُرهان وPower Apps، لأن بيانات بُرهان محفوظة داخل Claude. لديكِ مساران، والأهم ألّا يعمل الفريق في نظامين معًا.</p>${T(['','المسار أ: البقاء في بُرهان','المسار ب: الانتقال إلى Microsoft 365'], [['متى يناسب؟','الآن وفي الدورة التجريبية؛ إذا كان لدى الفريق حسابات Claude','إذا اشترطت المدرسة أو الوزارة بقاء البيانات في Teams وSharePoint'],['الذكاء الاصطناعي','Claude داخل الاستوديو مع المقارنة التلقائية','Copilot خارج التطبيق، ويُلصق النص يدويًا في القائمة'],['التقارير والتحليل','جاهزة داخل المنصة','تُبنى في Power BI'],['الجهد','لا شيء إضافي','نحو أسبوعين لبناء القوائم والتطبيق والتدفقات']])}</section>
-  <section class="panel"><h2>خطوات الانتقال إلى Microsoft 365 (المسار ب)</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:8px">
-    <li><b>نزّلي حزمة Microsoft 365</b> من «البحث والبيانات ← التصدير»: ملف zip فيه 15 ملف CSV، كل ملف قائمة، بلا أسماء.</li>
-    <li><b>في موقع SharePoint الخاص بفريق Teams:</b> جديد ← قائمة ← من CSV، لكل ملف. احتفظي بأسماء القوائم كما هي (Burhan_Notes، Burhan_StudentEvidence…).</li>
-    <li><b>راجعي أنواع الأعمدة:</b> التواريخ Date، الدرجات Number، المقرر والسياق Choice، الرموز Single line of text.</li>
-    <li><b>Power Apps:</b> make.powerapps.com ← إنشاء ← من SharePoint ← اختاري Burhan_Notes، ثم أضيفي بقية القوائم مصادر بيانات. اجعلي الشاشات على غرار صفحات بُرهان: ماذا أفعل الآن، سجّلي، دليل تعلّم، القرارات.</li>
-    <li><b>الربط بين القوائم بالرموز لا بالأسماء:</b> cycleId، classId، lessonId، meetingId، decisionLink، studentCode، author.</li>
-    <li><b>Power Automate:</b> تذكير قبل موعد المهمة، تنبيه عند تأخر الأدلة، إشعار عند إنشاء قرار.</li>
-    <li><b>Power BI:</b> اتصلي بالقوائم نفسها، وابني لوحة الأثر على Burhan_StudentEvidence.</li></ol>
-    <p class="small muted">إن اخترتِ هذا المسار، أستطيع أن أجهّز لكِ مواصفات القوائم وأعمدتها وصيغ Power Apps للشاشات الرئيسة.</p></section>`;
-  if (t === 'school') body = `<section class="panel"><h2>كيف تطبّق مدرسة أخرى «بُرهان»؟</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:8px"><li>تكوين فريق من 3–5 معلمات من مقررات مختلفة، واختيار قائدة.</li><li>نسخة جديدة من المنصة للمدرسة، ثم «الإعداد»: الرموز، الفصول، المشكلة، الدورة الأولى.</li><li>اعتماد الإيقاع الأسبوعي وبروتوكول الاجتماع كما هما.</li><li>تنفيذ دورة كاملة (6 أسابيع) بالمراحل الاثنتي عشرة وأدلتها.</li><li>إصدار تقرير الدورة ومناقشته، ثم بدء الدورة الثانية بمشكلة جديدة أو أعمق.</li></ol><p class="small muted">الحد الأدنى للنجاح: اجتماع لا يُلغى، دليل قبل كل قرار، نسختان على الأقل من درس البحث.</p></section>`;
-  return `<div><h1>دليل القيادة والتطبيق</h1><p class="lede">كيف يُدار المشروع: ما تحتاجه القائدة، من يفعل ماذا، الإيقاع الأسبوعي، الأدلة وشكلها، التقارير، ومعايير الجودة.</p></div>
-  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="pb-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
-};
-
-/* ---- Setup ---- */
-V.setup = () => {
-  const me = myMember(); const st = D.settings; const ed = S.canEdit; const unlinked = D.team.filter(m => !m.userId);
-  return `<div><h1>الإعداد</h1><p class="lede">إعداد يُنجز مرة واحدة: المرحلة والمواد والفريق والفصول والدورة. ${ed ? '' : 'بعض الإعدادات متاحة لصاحبة المنصة فقط.'}</p></div>
-  ${typeof projectWizard === 'function' ? projectWizard() : ''}
-  <section class="panel">${stepHead(1, 'اربطي حسابك برمزك', 'يُحفظ عملك برمزك (مثل T02) لا باسمك.')}${me ? `<div class="ok">حسابك مرتبط بالرمز ${esc(me.code)} · ${esc(me.discipline || '')} · ${esc(me.role || '')}</div><div><button class="btn ghost small" data-act="unlink">فك الارتباط</button></div>` : (S.uid ? `<div class="row">${unlinked.map(m => `<button class="btn ghost" data-act="link" data-id="${esc(m._id)}">أنا ${esc(m.code)} · ${esc(m.discipline || '')}</button>`).join('') || '<span class="muted">كل الرموز مرتبطة. أضيفي عضوة في الخطوة 3.</span>'}</div>` : '<div class="note">تعذّر التعرف على حسابك في هذا العرض.</div>')}</section>
-  <form class="panel" data-form="settings">${stepHead(2, 'المشروع ومشكلة التعلّم', 'تظهر المشكلة في كل الصفحات وتُضمَّن في طلبات الذكاء الاصطناعي.')}<fieldset ${ed ? '' : 'disabled'} style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:12px">
-    <div class="grid">${field('اسم المشروع', inp('projectName', st.projectName || 'بُرهان'))}${field('المدرسة', inp('school', st.school))}${field('الدورة الحالية', `<select name="currentCycle" id="f-currentCycle">${opts(D.cycles.map(c => c.code), st.currentCycle, '—')}</select>`)}${field('وضع البيانات', `<select name="studyPhase" id="f-studyPhase">${opts([['Pilot','Pilot · تجريبي'],['Formal','Formal · الدراسة الرسمية']], st.studyPhase || 'Pilot')}</select>`, 'Formal بعد الموافقة الأخلاقية فقط')}</div>
-    <div class="grid wide">${field('مشكلة التعلّم المشتركة', area('learningProblem', st.learningProblem, 'placeholder="مثال: تقدّم الطالبات إجابات صحيحة إجرائيًا دون القدرة على تفسير خطواتهن أو نقلها لموقف جديد"'))}${field('سؤال الاستقصاء المهني', area('inquiryQuestion', st.inquiryQuestion, 'placeholder="مثال: كيف نصمّم دعمًا متمايزًا ينقل الطالبة من الإجراء إلى التفسير والنقل؟"'))}${field('الهدف بعيد المدى', area('goal', st.goal, 'placeholder="مثال: طالبات يفسّرن تفكيرهن ويتحققن منه باستقلالية عبر المقررات"'))}${field('مرجع الموافقة الأخلاقية', inp('ethicsRef', st.ethicsRef))}</div>
-    <div class="row"><button class="btn" type="submit">حفظ</button></div></fieldset></form>
-  <section class="panel">${stepHead(3, 'الفريق', 'رموز المعلمات وتخصصاتهن وأدوارهن.')}<div class="scroll"><table><thead><tr><th>الرمز</th><th>التخصص</th><th>الدور</th><th>مرتبط بحساب</th></tr></thead><tbody>${D.team.slice().sort((a, b) => a.code.localeCompare(b.code)).map(m => `<tr><td><b>${esc(m.code)}</b></td><td>${ed ? `<select data-disc="${esc(m._id)}" aria-label="تخصص ${esc(m.code)}">${opts([...SUBJ.map(s => s.n), 'أخرى'], m.discipline)}</select>` : (subjChip(m.discipline) || esc(m.discipline))}</td><td>${ed ? `<select data-role="${esc(m._id)}" aria-label="دور ${esc(m.code)}">${opts(['قائدة المشروع','معلمة مشاركة','باحثة','ملاحِظة درس'], m.role)}</select>` : esc(m.role)}</td><td>${m.userId ? 'نعم' : '—'}</td></tr>`).join('')}</tbody></table></div>
-    ${ed ? `<form data-form="member" class="grid">${field('تخصص العضوة الجديدة', `<select name="discipline" id="f-discipline">${opts([...SUBJ.map(s => s.n), 'أخرى'])}</select>`)}${field('الدور', `<select name="role" id="f-role">${opts(['معلمة مشاركة','قائدة المشروع','باحثة','ملاحِظة درس'])}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة عضوة</button></div></form>` : ''}</section>
-  <section class="panel">${stepHead(4, 'الفصول', 'اسم الفصل وعدد طالباته لكل مقرر. يُحفظان تلقائيًا مع كل سجل.')}<div class="ledger">${SUBJ.map(s => { const cl = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cl.length} فصل</span></div><div class="row">${cl.map(x => `<span class="chip ${x.classRole === 'comparison' ? 'warn' : 'plain'}">${esc(x.name)} · ${esc(x.count)} طالبة${x.teacher ? ' · ' + esc(x.teacher) : ''}${x.classRole === 'comparison' ? ' · مقارنة' : ''}</span>`).join('') || '<span class="small muted">لا فصول بعد</span>'}</div></div>`; }).join('')}</div>
-    <form data-form="class" class="grid">${field('المقرر', `<select name="subject" id="f-csubject">${opts(SUBJ.map(s => s.n), mySubject())}</select>`)}${field('اسم الفصل', inp('name', '', 'placeholder="2/3 علمي" required'))}${field('عدد الطالبات', inp('count', '', 'type="number" min="1" max="60" inputmode="numeric" required'))}${field('الصف', inp('grade', '', 'placeholder="الثاني الثانوي"'))}${field('نوع الشعبة', `<select name="classRole" id="f-classRole">${opts([['intervention','تدخّل'],['comparison','مقارنة (تُقاس فقط)']])}</select>`)}${field('المعلمة', `<select name="teacher" id="f-cteacher">${opts(D.team.map(m => m.code), myCode())}</select>`)}<div class="row" style="align-self:end"><button class="btn ghost" type="submit">إضافة الفصل</button></div></form></section>
-  <section class="panel">${stepHead(5, 'دورات بحث الدرس', 'دورة واحدة نشطة في كل مرة، نحو 6 أسابيع.')}<div class="ledger">${D.cycles.slice().sort((a, b) => a.code.localeCompare(b.code)).map(c => `<div class="rec"><div class="row between"><b>${esc(c.code)} · ${esc(c.title || '')}</b><span class="chip">${esc(c.studyPhase)} · المرحلة ${esc(c.phase)}: ${esc(phaseOf(c).n)}</span></div><div class="meta">${subjChip(c.subject)}<span>بدأت ${esc(fmtDate(c.startDate))}</span></div></div>`).join('') || '<div class="empty">لا دورات بعد.</div>'}</div>
-    ${ed ? `<form data-form="cycle" class="stepsec"><div class="hint">طريقة العمل في هذه الدورة</div>
-    <div class="modecards" role="radiogroup" aria-label="طريقة العمل">
-      <label><input type="radio" name="cyMode" value="single" checked><b>مادة واحدة</b><span>درس بحثي في مادة واحدة، والفريق كله يخطط ويلاحظ ويحلّل. 12 مرحلة في نحو 6 أسابيع، والمواد تتناوب بين الدورات.</span></label>
-      <label><input type="radio" name="cyMode" value="parallel"><b>متوازية (كل المواد معًا)</b><span>قياس قبلي في كل المواد، تخطيط مشترك، تدريس V1 بالتناوب، تحليل مشترك، ثم V2 وقياس بعدي. 7 مراحل في نحو 7 أسابيع.</span></label>
-    </div>
-    <div class="grid">${field('عنوان الدورة', inp('title', '', 'placeholder="مثال: من الإجراء إلى التفسير" required'))}<div data-mode-single>${field('مقرر درس البحث', `<select name="subject" id="f-cysubject">${opts(SUBJ.map(s => s.n))}</select>`)}</div>${field('تاريخ البداية', inp('startDate', today(), 'type="date"'))}${field('وضع البيانات', `<select name="cyPhase" id="f-cyPhase">${opts([['Pilot','Pilot · تجريبية'],['Formal','Formal · رسمية']], phase())}</select>`)}</div>
-    <div data-mode-par hidden><div class="hint" style="margin-bottom:6px">المواد المشاركة في هذه الدورة (مادتان على الأقل)</div>${checks('cySubjects', SUBJ.map(s => [s.n, s.n]), SUBJ.map(s => s.n))}</div>
-    <div class="row"><button class="btn" type="submit">إنشاء الدورة</button></div></form>` : ''}</section>`;
-};
-
-/* =========================================================
-   5b. Dashboard, analysis, library, attachments, minutes
-   ========================================================= */
-const SUBJ_VAR = {dt:'--c-dt', math:'--c-math', chem:'--c-chem', phys:'--c-phys', p1:'--p1', p2:'--p2', p3:'--p3', p4:'--p4', p5:'--p5', p6:'--p6', p7:'--p7', p8:'--p8'};
-const sv = n => 'var(' + (SUBJ_VAR[(SUBJ_BY_NAME[n] || {}).k] || '--accent') + ')';
-const TPV = ['var(--q1)','var(--q2)','var(--q3)','var(--q4)'];
-const LV = ['var(--l0)','var(--l1)','var(--l2)','var(--l3)','var(--l4)'];
-const tipA = s => ` data-tip="${esc(s)}" tabindex="0"`;
-const legend = items => `<div class="legend">${items.map(([c, l]) => `<span><i style="background:${c}"></i>${esc(l)}</span>`).join('')}</div>`;
-const indName = k => (INDICATORS.find(i => i[0] === k) || [k, k])[1];
-const tpName = k => (TIMEPOINTS.find(i => i[0] === k) || [k, k])[1];
-
-/* attachments */
-function attachField() { return S.assets ? field('إرفاق ملف (اختياري)', `<input type="file" name="attach" id="f-attach" multiple accept="image/*,application/pdf">`, 'صورة عمل طالبة أو PDF. تأكدي ألا يظهر فيه أي اسم') : ''; }
-async function uploadFiles(input) {
-  const out = []; if (!input || !input.files || !input.files.length || !S.assets) return out;
-  for (const file of Array.from(input.files)) {
-    if (file.size > 20 * 1024 * 1024) { toast('الملف ' + file.name + ' أكبر من 20 ميغابايت ولم يُرفع.'); continue; }
-    try { const r = await S.assets.upload(file); out.push({id: r.id, url: r.url, name: file.name, type: file.type || ''}); }
-    catch (x) { toast('تعذّر رفع ' + file.name + '.'); }
-  }
-  return out;
-}
-const filesHtml = files => (files || []).length ? `<div class="row small">${files.map(f => `<a href="${esc(f.url || ('/_blob/' + f.id))}" target="_blank" rel="noopener">ملف: ${esc(f.name || 'ملف')}</a>`).join('')}</div>` : '';
-
-/* charts */
-function meansChart(evs, ind) {
-  const H = 200;
-  const groups = SUBJ.map(s => ({label: s.n, bars: TIMEPOINTS.map(([tp, tl], i) => { const x = evs.filter(e => e.subject === s.n && e.timePoint === tp).map(e => e[ind]).filter(v => v != null); return {m: avg(x), n: x.length, tl, i}; })}));
-  return `<div class="vchart" role="img" aria-label="${esc('متوسط ' + indName(ind) + ' حسب المقرر ونقطة القياس')}">
-  <div class="yaxis" style="height:${H}px">${[0,1,2,3,4].map(v => `<span style="bottom:${v / 4 * 100}%">${v}</span>`).join('')}</div>
-  <div class="plot" style="height:${H}px">${[1,2,3,4].map(v => `<i class="gl" style="bottom:${v / 4 * 100}%"></i>`).join('')}${groups.map(g => `<div class="vgroup">${g.bars.map(b => b.m == null ? `<span class="vbar vnone"${tipA(g.label + ' · ' + b.tl + ': لا بيانات')}></span>` : `<span class="vbar" style="height:${b.m / 4 * 100}%;background:${TPV[b.i]}"${tipA(g.label + ' · ' + b.tl + ': ' + b.m.toFixed(2) + ' (ن=' + b.n + ')')}></span>`).join('')}</div>`).join('')}</div>
-  <div></div><div class="xlabels">${groups.map(g => `<span>${esc(g.label)}</span>`).join('')}</div></div>
-  ${legend(TIMEPOINTS.map(([, tl], i) => [TPV[i], tl]))}`;
-}
-function levelDist(evs, ind) {
-  const rows = []; SUBJ.forEach(s => ['Baseline','Post'].forEach(tp => { const x = evs.filter(e => e.subject === s.n && e.timePoint === tp && e[ind] != null); rows.push({s: s.n, tp, n: x.length, c: [0,1,2,3,4].map(l => x.filter(e => e[ind] === l).length)}); }));
-  return `<div class="ledger">${rows.map(r => `<div class="drow"><span class="dl">${esc(r.s)} · ${esc(tpName(r.tp).split(' ')[0] + ' ' + (tpName(r.tp).split(' ')[1] || ''))}</span>${r.n ? `<div class="hstack">${r.c.map((n, l) => n ? `<span style="flex:${n};background:${LV[l]}"${tipA(r.s + ' · ' + tpName(r.tp) + ' · مستوى ' + l + ': ' + n + ' (' + Math.round(n / r.n * 100) + '%)')}></span>` : '').join('')}</div>` : '<div class="hstack hnone"><span class="tiny muted" style="padding-inline:8px">لا بيانات</span></div>'}<span class="dn">${r.n}</span></div>`).join('')}</div>
-  ${legend(RUBRIC.map((r, l) => [LV[l], r]))}`;
-}
-function weeklyChart(recs) {
-  const weeks = []; for (let i = 7; i >= 0; i--) { const end = daysAgo(i * 7), start = daysAgo(i * 7 + 6); const x = recs.filter(r => { const d = dateOf(r); return d >= start && d <= end; }); weeks.push({start, end, n: x.length, notes: x.filter(r => r._k === 'n').length, ev: x.filter(r => r._k === 'e').length, ai: x.filter(r => r._k === 'a').length, dec: x.filter(r => r._k === 'd').length}); }
-  const mx = Math.max(4, ...weeks.map(w => w.n)); const H = 150;
-  return `<div class="vchart" role="img" aria-label="عدد السجلات في كل أسبوع خلال 8 أسابيع">
-  <div class="yaxis" style="height:${H}px"><span style="bottom:0">0</span><span style="bottom:100%">${mx}</span></div>
-  <div class="plot" style="height:${H}px"><i class="gl" style="bottom:50%"></i><i class="gl" style="bottom:100%"></i>${weeks.map((w, i) => `<div class="vgroup"><span class="vbar" style="width:60%;max-width:44px;height:${w.n / mx * 100}%;background:var(--accent)"${tipA(fmtDate(w.start) + ' – ' + fmtDate(w.end) + ': ' + w.n + ' سجل · ملاحظات ' + w.notes + ' · أدلة ' + w.ev + ' · AI ' + w.ai + ' · قرارات ' + w.dec)}></span>${i === 7 && w.n ? `<b class="vlab">${w.n}</b>` : ''}</div>`).join('')}</div>
-  <div></div><div class="xlabels">${weeks.map((w, i) => `<span>${i === 7 ? 'هذا الأسبوع' : (i === 0 ? 'قبل 7' : '')}</span>`).join('')}</div></div>`;
-}
-function stackBar(parts, total) { return total ? `<div class="hstack" style="height:28px;flex:none">${parts.filter(p => p.n).map(p => `<span style="flex:${p.n};background:${p.c}"${tipA(p.l + ': ' + p.n + ' (' + Math.round(p.n / total * 100) + '%)')}></span>`).join('')}</div>${legend(parts.map(p => [p.c, p.l + ' ' + p.n]))}` : '<div class="empty">لا بيانات بعد.</div>'; }
-
-/* ---- Dashboard ---- */
-V.dash = () => {
-  const cy = S.dashCycle; const f = arr => bySubj(cy ? arr.filter(r => r.cycleId === cy) : arr);
-  const N = f(D.notes), E = f(D.evidence), A = f(D.ai), Dc = f(D.decisions);
-  const students = D.classes.filter(c => !S.subj || c.subject === S.subj).reduce((a, c) => a + (Number(c.count) || 0), 0);
-  const wk = daysAgo(7); const thisWeek = [...N, ...E, ...A, ...Dc].filter(r => dateOf(r) >= wk).length;
-  const decEv = Dc.length ? Math.round(Dc.filter(d => d.evidence).length / Dc.length * 100) : null;
-  const aiMod = A.length ? Math.round(A.filter(a => a.decision !== 'accepted').length / A.length * 100) : null;
-  const tasksDone = D.tasks.length ? Math.round(D.tasks.filter(t => t.status === 'done').length / D.tasks.length * 100) : null;
-  const recs = [...N.map(r => ({...r, _k: 'n'})), ...E.map(r => ({...r, _k: 'e'})), ...A.map(r => ({...r, _k: 'a'})), ...Dc.map(r => ({...r, _k: 'd'}))];
-  const freq = {}; [...N, ...A].forEach(r => (r.practices || []).forEach(p => { freq[p] = (freq[p] || 0) + 1; })); const mx = Math.max(1, ...Object.values(freq));
-  const c = curCycle(); const gaps = c ? phasesOf(c).map((p, i) => { const ev = p.ev.map(([, fn]) => fn(c)); const ok = ev.filter(([n, t]) => t === 0 || n >= t).length; return {i, p, ok, tot: ev.length}; }) : [];
-  return `<div class="row between"><div><h1>لوحة المعلومات</h1><p class="lede">صورة المشروع الآن: النشاط، الأدلة، التمايز، الذكاء الاصطناعي، والفريق. مرّري المؤشر على أي عمود لترَي الرقم.</p></div><button class="btn ghost" data-act="go-report" data-t="weekly">التقرير الأسبوعي</button></div>
-  <div class="row between">${subjBar()}<label class="row small" style="font-weight:600">الدورة <select id="dashCycle" style="width:auto">${opts(D.cycles.map(x => x.code), cy, 'كل الدورات')}</select></label></div>
-  <div class="grid">${[['طالبة في الفصول المشاركة', students], ['سجل هذا الأسبوع', thisWeek], ['دليل تعلّم', E.length], ['قرارات مبنية على دليل', decEv == null ? '—' : decEv + '%'], ['مقترحات AI عدّلتها المعلمة أو رفضتها', aiMod == null ? '—' : aiMod + '%'], ['إنجاز المهام', tasksDone == null ? '—' : tasksDone + '%']].map(([l, v]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>
-  <div class="cols">
-    <section class="panel"><h2>النشاط الأسبوعي</h2><p class="small muted">عدد كل السجلات في كل أسبوع، آخر 8 أسابيع</p>${weeklyChart(recs)}</section>
-    <section class="panel"><h2>تقدّم الدورة ${c ? esc(c.code) : ''}</h2>${c ? `<div class="ledger">${gaps.map(g => `<div class="drow"><span class="dl">${g.i + 1}. ${esc(g.p.n)}</span><div class="meter" style="flex:1"><span style="width:${Math.round(g.ok / g.tot * 100)}%;${g.i + 1 === Number(c.phase) ? 'background:var(--amber)' : ''}"></span></div><span class="dn">${g.ok}/${g.tot}</span></div>`).join('')}</div><p class="tiny muted">الأدلة المكتملة في كل مرحلة. البرتقالي: المرحلة الحالية.</p>` : '<div class="empty">لا دورة بعد.</div>'}</section>
-  </div>
-  <section class="panel"><div class="row between"><h2>أثر الطالبات: متوسط ${esc(indName(S.dashInd))} (0–4)</h2><select id="dashInd" style="width:auto" aria-label="المؤشر">${opts(INDICATORS.map(i => [i[0], i[1]]), S.dashInd)}</select></div>${meansChart(E, S.dashInd)}<p class="tiny muted">أعمدة فارغة = لم يُقس بعد. القراءة وصفية؛ للتحليل الأدق افتحي «التحليل».</p></section>
-  <section class="panel"><h2>توزيع المستويات قبل الدورة وبعدها: ${esc(indName(S.dashInd))}</h2><p class="small muted">هذا ما يوجّه التمايز: كم طالبة في كل مستوى، وهل انتقلن إلى مستويات أعلى؟</p>${levelDist(E, S.dashInd)}</section>
-  <div class="cols">
-    <section class="panel"><h2>قرارات المعلمات على مقترحات AI</h2>${stackBar([{n: A.filter(a => a.decision === 'accepted').length, c: 'var(--accent)', l: 'قبول'}, {n: A.filter(a => a.decision === 'modified').length, c: 'var(--q2)', l: 'تعديل'}, {n: A.filter(a => a.decision === 'rejected').length, c: 'var(--amber)', l: 'رفض'}], A.length)}${A.filter(a => a.diffStats).length ? `<p class="small">متوسط ما بقي من نص AI بعد تحرير المعلمة: <b>${Math.round(avg(A.filter(a => a.diffStats).map(a => a.diffStats.sim)))}%</b></p>` : ''}</section>
-    <section class="panel"><h2>الممارسات المهنية الأكثر حضورًا</h2><div class="bars">${PRACTICES.map(([k, l]) => `<div class="bar"><span>${l}</span><div class="meter"><span style="width:${Math.round((freq[k] || 0) / mx * 100)}%"></span></div><b>${freq[k] || 0}</b></div>`).join('')}</div></section>
-  </div>
-  <section class="panel"><h2>مشاركة الفريق</h2><div class="scroll"><table><thead><tr><th>المعلمة</th><th>المقرر</th><th>أثناء الحصة</th><th>خارج الحصة</th><th>تأملات</th><th>أدلة تعلّم</th><th>سجلات AI</th><th>المهام المكتملة</th><th>آخر نشاط</th></tr></thead><tbody>${D.team.slice().sort((a, b) => a.code.localeCompare(b.code)).map(m => { const mine = arr => arr.filter(r => r.author === m.code); const all = [...mine(N), ...mine(E), ...mine(A)].sort(byNewest); const tk = D.tasks.filter(t => t.owner === m.code); return `<tr><td><b>${esc(m.code)}</b></td><td>${subjChip(m.discipline) || esc(m.discipline)}</td><td>${mine(N).filter(n => n.context === 'in').length}</td><td>${mine(N).filter(n => n.context === 'out').length}</td><td>${mine(N).filter(n => n.context === 'after').length}</td><td>${mine(E).length}</td><td>${mine(A).length}</td><td>${tk.filter(t => t.status === 'done').length}/${tk.length}</td><td>${all[0] ? esc(fmtDate(all[0].date || all[0].createdAt)) : '—'}</td></tr>`; }).join('')}</tbody></table></div></section>
-  <section class="panel"><h2>جودة البيانات</h2><div class="grid">${[['أدلة بلا فصل', E.filter(e => !e.classId).length], ['ملاحظات بلا درس', N.filter(n => !n.lessonTitle).length], ['قرارات بلا دليل', Dc.filter(d => !d.evidence).length], ['سجلات AI بلا سبب', A.filter(a => !a.reason).length], ['حسابات غير مرتبطة', D.team.filter(m => !m.userId).length], ['مهام متأخرة', D.tasks.filter(t => t.status !== 'done' && t.due && t.due < today()).length]].map(([l, v]) => `<div class="stat"><b style="color:${v ? 'var(--amber)' : 'var(--accent)'}">${v}</b><span>${esc(l)}${v ? ' · يحتاج متابعة' : ' · سليم'}</span></div>`).join('')}</div></section>`;
-};
-
-/* ---- Analysis ---- */
-function latestBy(list) { const m = {}; list.slice().sort((a, b) => String(a.createdAt || a.date).localeCompare(String(b.createdAt || b.date))).forEach(e => { m[e.studentCode] = e; }); return m; }
-function pairsOf(ind, from, to, subj, filterFn) {
-  const ev = D.evidence.filter(e => e[ind] != null && (!subj || e.subject === subj) && (!filterFn || filterFn(e)));
-  const A = latestBy(ev.filter(e => e.timePoint === from)), B = latestBy(ev.filter(e => e.timePoint === to));
-  return Object.keys(A).filter(k => B[k]).map(k => ({code: k, subject: A[k].subject, classId: A[k].classId, a: A[k][ind], b: B[k][ind], d: B[k][ind] - A[k][ind], support: B[k].supportLevel}));
-}
-function pstats(P) {
-  if (!P.length) return null; const n = P.length; const ma = avg(P.map(p => p.a)), mb = avg(P.map(p => p.b)), md = avg(P.map(p => p.d));
-  const sd = n > 1 ? Math.sqrt(P.reduce((s, p) => s + (p.d - md) ** 2, 0) / (n - 1)) : null;
-  return {n, ma, mb, md, sd, dz: sd ? md / sd : null, up: P.filter(p => p.d > 0).length, same: P.filter(p => p.d === 0).length, down: P.filter(p => p.d < 0).length};
-}
-function statTiles(st) { return st ? `<div class="grid">${[['عدد الطالبات (أزواج)', st.n], ['المتوسط قبل', f1(st.ma)], ['المتوسط بعد', f1(st.mb)], ['متوسط التغيّر', (st.md >= 0 ? '+' : '') + st.md.toFixed(2)], ['حجم الأثر dz', st.dz == null ? '—' : st.dz.toFixed(2)], ['تحسّنّ / ثبتن / تراجعن', st.up + ' / ' + st.same + ' / ' + st.down]].map(([l, v]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>` : ''; }
-function changeHist(P) {
-  const bins = [-4,-3,-2,-1,0,1,2,3,4].map(v => ({v, n: P.filter(p => p.d === v).length})); const mx = Math.max(1, ...bins.map(b => b.n)); const H = 140;
-  return `<div class="vchart" role="img" aria-label="توزيع التغيّر في الدرجة"><div class="yaxis" style="height:${H}px"><span style="bottom:0">0</span><span style="bottom:100%">${mx}</span></div>
-  <div class="plot" style="height:${H}px;flex-direction:row-reverse">${bins.map(b => `<div class="vgroup"><span class="vbar" style="width:60%;max-width:40px;height:${b.n / mx * 100}%;background:${b.v > 0 ? 'var(--accent)' : (b.v < 0 ? 'var(--amber)' : 'var(--l1)')}"${tipA('تغيّر ' + (b.v > 0 ? '+' : '') + b.v + ': ' + b.n + ' طالبة')}></span></div>`).join('')}</div>
-  <div></div><div class="xlabels" style="flex-direction:row-reverse">${bins.map(b => `<span>${b.v > 0 ? '+' : ''}${b.v}</span>`).join('')}</div></div>${legend([['var(--amber)', 'تراجع'], ['var(--l1)', 'ثبات'], ['var(--accent)', 'تحسّن']])}`;
-}
-V.analysis = () => {
-  const t = S.anTab; const tabs = [['growth','نمو الطالبات (أزواج)'],['levels','التمايز حسب مستوى البداية'],['compare','الشعب: تدخّل ومقارنة'],['qual','التحليل النوعي']];
-  const ctrl = `<div class="row">${field('المؤشر', `<select id="anInd">${opts(INDICATORS.map(i => [i[0], i[1]]), S.anInd)}</select>`)}${field('من', `<select id="anFrom">${opts(TIMEPOINTS, S.anFrom)}</select>`)}${field('إلى', `<select id="anTo">${opts(TIMEPOINTS, S.anTo)}</select>`)}</div>`;
-  let body = '';
-  if (t === 'growth') { const P = pairsOf(S.anInd, S.anFrom, S.anTo, S.subj); const st = pstats(P);
-    body = `<section class="panel">${ctrl}${subjBar()}<p class="small muted">نقارن الطالبة نفسها بين نقطتين، لا متوسطات مجموعات مختلفة. حجم الأثر dz = متوسط التغيّر ÷ انحرافه المعياري (0.2 صغير، 0.5 متوسط، 0.8 كبير تقريبًا).</p>
-    ${st ? statTiles(st) + `<h3>توزيع التغيّر</h3>${changeHist(P)}<details class="help"><summary>جدول الطالبات (${P.length})</summary><div class="scroll"><table><thead><tr><th>الطالبة</th><th>المقرر</th><th>${esc(tpName(S.anFrom))}</th><th>${esc(tpName(S.anTo))}</th><th>التغيّر</th><th>الدعم في القياس الثاني</th></tr></thead><tbody>${P.sort((a, b) => b.d - a.d).map(p => `<tr><td>${esc(p.code)}</td><td>${subjChip(p.subject)}</td><td>${p.a}</td><td>${p.b}</td><td><b>${p.d > 0 ? '+' : ''}${p.d}</b></td><td>${esc(p.support || '—')}</td></tr>`).join('')}</tbody></table></div></details>` : `<div class="empty">لا توجد طالبات لهن قياسان في «${esc(tpName(S.anFrom))}» و«${esc(tpName(S.anTo))}» لهذا المؤشر بعد. يظهر التحليل عند إدخال القياسين للطالبة نفسها برمزها نفسه.</div>`}</section>`; }
-  if (t === 'levels') { const P = pairsOf(S.anInd, S.anFrom, S.anTo, S.subj); const G = [['أ · بداية منخفضة (0–1)', p => p.a <= 1], ['ب · بداية متوسطة (2)', p => p.a === 2], ['ج · بداية مرتفعة (3–4)', p => p.a >= 3]];
-    body = `<section class="panel">${ctrl}${subjBar()}<p class="small muted">هل استفادت كل مستويات البداية؟ التمايز الناجح يرفع المستوى المنخفض دون أن يوقف نمو المرتفع.</p>
-    ${P.length ? `<div class="scroll"><table><thead><tr><th>مستوى البداية</th><th>ن</th><th>قبل</th><th>بعد</th><th>متوسط التغيّر</th><th></th><th>تحسّنّ</th></tr></thead><tbody>${G.map(([l, fn]) => { const st = pstats(P.filter(fn)); return `<tr><td><b>${esc(l)}</b></td><td>${st ? st.n : 0}</td><td>${st ? f1(st.ma) : '—'}</td><td>${st ? f1(st.mb) : '—'}</td><td>${st ? (st.md >= 0 ? '+' : '') + st.md.toFixed(2) : '—'}</td><td style="min-width:140px">${st ? `<div class="meter"><span style="width:${Math.max(0, Math.min(100, st.md / 4 * 100))}%"></span></div>` : ''}</td><td>${st ? Math.round(st.up / st.n * 100) + '%' : '—'}</td></tr>`; }).join('')}</tbody></table></div>
-    <h3>الدعم الذي احتاجته الطالبات في القياس الثاني</h3>${G.map(([l, fn]) => { const x = P.filter(fn); const lv = ['بلا دعم','دعم 1: تلميح','دعم 2: بطاقة موجّهة','دعم 3: مثال محلول']; return `<div class="drow"><span class="dl">${esc(l.split(' · ')[0])}</span>${x.length ? `<div class="hstack">${lv.map((s, i) => { const n = x.filter(p => p.support === s).length; return n ? `<span style="flex:${n};background:${LV[4 - i]}"${tipA(l + ' · ' + s + ': ' + n)}></span>` : ''; }).join('')}</div>` : '<div class="hstack hnone"></div>'}<span class="dn">${x.length}</span></div>`; }).join('')}${legend(['بلا دعم','دعم 1','دعم 2','دعم 3'].map((s, i) => [LV[4 - i], s]))}` : '<div class="empty">لا أزواج قياس بعد.</div>'}</section>`; }
-  if (t === 'compare') { const role = e => (D.classes.find(c => c.code === e.classId) || {}).classRole || 'intervention'; const I = pstats(pairsOf(S.anInd, S.anFrom, S.anTo, S.subj, e => role(e) === 'intervention')), C = pstats(pairsOf(S.anInd, S.anFrom, S.anTo, S.subj, e => role(e) === 'comparison'));
-    body = `<section class="panel">${ctrl}${subjBar()}<p class="small muted">إن وُجدت شعب مقارنة (تُقاس فقط)، نقارن تغيّر طالبات التدخّل بتغيّر طالبات المقارنة. يُحدَّد نوع الشعبة في «الإعداد».</p>
-    ${C ? `<div class="scroll"><table><thead><tr><th>المجموعة</th><th>ن</th><th>قبل</th><th>بعد</th><th>متوسط التغيّر</th><th>dz</th></tr></thead><tbody>${[['شعب التدخّل', I], ['شعب المقارنة', C]].map(([l, s]) => `<tr><td><b>${l}</b></td><td>${s ? s.n : 0}</td><td>${s ? f1(s.ma) : '—'}</td><td>${s ? f1(s.mb) : '—'}</td><td>${s ? (s.md >= 0 ? '+' : '') + s.md.toFixed(2) : '—'}</td><td>${s && s.dz != null ? s.dz.toFixed(2) : '—'}</td></tr>`).join('')}</tbody></table></div>${I ? `<div class="ok">الفرق في متوسط التغيّر: ${(I.md - C.md >= 0 ? '+' : '') + (I.md - C.md).toFixed(2)} لصالح ${I.md >= C.md ? 'شعب التدخّل' : 'شعب المقارنة'} (وصفي)</div>` : ''}` : '<div class="empty">لا توجد شعب مقارنة لها قياسان بعد. أضيفي شعبة من نوع «مقارنة» في الإعداد إن كان التصميم يسمح بذلك.</div>'}</section>`; }
-  if (t === 'qual') body = `<section class="panel"><div class="grid">${field('كلمة البحث', `<input id="qq" value="${esc(S.qq || '')}" placeholder="مثال: الميل، تعثّر، دعم الأقران" autocomplete="off">`)}${field('السياق', `<select id="qctx">${opts(Object.entries(CONTEXTS).map(([k, x]) => [k, x.n]), S.qctx, 'كل السياقات')}</select>`)}${field('الممارسة', `<select id="qpr">${opts(PRACTICES, S.qpr, 'كل الممارسات')}</select>`)}</div>${subjBar()}
-    <p class="small muted">ابحثي في كل الملاحظات والتأملات عن موضوع أو نمط، ثم صدّري النتائج للترميز في NVivo أو MAXQDA.</p><div class="row"><button class="btn ghost small" data-act="qual-export"${S.downloads ? '' : ' disabled'}>تصدير النتائج CSV</button></div><div id="qualOut">${qualHtml()}</div></section>`;
-  return `<div><h1>التحليل</h1><p class="lede">تحليل وصفي استكشافي لبياناتكم: نمو الطالبة نفسها، والتمايز حسب مستوى البداية، والمقارنة بين الشعب، والبحث في النصوص. في وضع Pilot تُقرأ النتائج لتحسين العمل، لا للنشر.</p></div>
-  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="an-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
-};
-const QTEXT = ['observed','stumble','promptUsed','response','learningEvidence','text','discussed','proposal','noticed','learned','change','next','openQuestion','evidenceRef'];
-function qualRows() { const q = (S.qq || '').trim(); return bySubj(D.notes).filter(n => (!S.qctx || n.context === S.qctx) && (!S.qpr || (n.practices || []).includes(S.qpr)) && (!q || QTEXT.some(k => String(n[k] || '').includes(q)))).sort(byNewest); }
-function qualHtml() {
-  const rows = qualRows(); const q = (S.qq || '').trim();
-  const hl = s => { const e = esc(s); return q ? e.split(esc(q)).join(`<mark>${esc(q)}</mark>`) : e; };
-  return `<p class="small"><b>${rows.length}</b> سجل مطابق</p><div class="ledger">${rows.slice(0, 80).map(n => `<div class="rec"><div class="row"><span class="chip plain">${esc(n.code)}</span><span class="chip">${esc(CONTEXTS[n.context] ? CONTEXTS[n.context].n : n.context)}</span></div>${ctxMeta(n)}<dl class="kv">${QTEXT.filter(k => n[k]).map(k => `<dt>${esc(NOTE_LAB[k] || k)}</dt><dd>${hl(n[k])}</dd>`).join('')}</dl>${practiceChips(n.practices)}</div>`).join('') || '<div class="empty">لا نتائج.</div>'}</div>`;
-}
-
-/* ---- Library ---- */
-const LIB_CATS = ['دراسات علمية','بحث الدرس Lesson Study','مجتمعات التعلّم المهني','التعليم المتمايز','الذكاء الاصطناعي التوليدي','أدوات القياس','أدلة وأطر رسمية','مراجع الدكتوراه','نماذج وقوالب الفريق','صادر عن الفريق'];
-const LIB_TYPES = ['كتاب','مقالة علمية','رسالة علمية','دليل أو إطار رسمي','صفحة ويب','أداة قياس','قالب أو نموذج','عرض أو تقرير صادر عنا','ملف داخلي'];
-const apaOf = o => [o.authors ? o.authors + (o.year ? ` (${o.year}).` : '.') : (o.year ? `(${o.year}).` : ''), o.title ? o.title + '.' : '', o.publisher ? o.publisher + '.' : '', o.link || ''].filter(Boolean).join(' ');
-V.library = () => {
-  const cat = S.libCat; const q = (S.libq || '').trim();
-  const list = D.library.filter(r => (!cat || r.category === cat) && (!q || [r.title, r.authors, r.summary, r.use, r.apa].some(x => String(x || '').includes(q)))).sort((a, b) => String(a.category).localeCompare(String(b.category)) || String(a.title).localeCompare(String(b.title)));
-  return `<div><h1>المكتبة والمراجع</h1><p class="lede">كل ما يستند إليه المشروع في مكان واحد: الدراسات، والأدلة الرسمية، وأدوات القياس، ومراجع الرسالة، والقوالب، وما يصدر عن الفريق من تقارير وعروض.</p></div>
-  <div class="row"><button class="btn small ${cat ? 'ghost' : ''}" data-act="lib-cat" data-c="">الكل (${D.library.length})</button>${LIB_CATS.map(c => `<button class="btn small ${cat === c ? '' : 'ghost'}" data-act="lib-cat" data-c="${esc(c)}">${esc(c)} (${D.library.filter(r => r.category === c).length})</button>`).join('')}</div>
-  <div class="row"><input id="libq" value="${esc(S.libq || '')}" placeholder="ابحثي في العناوين والمؤلفين والملخصات" style="max-width:520px" aria-label="بحث في المكتبة"></div>
-  <section class="panel"><div class="ledger" id="libOut">${libListHtml(list)}</div></section>
-  <details class="panel"><summary style="cursor:pointer;font-weight:600;color:var(--accent)">＋ إضافة مرجع أو مصدر أو ملف</summary>
-  <form data-form="lib" class="stepsec">
-    <div class="grid">${field('التصنيف', `<select name="category" id="f-category">${opts(LIB_CATS, cat || LIB_CATS[0])}</select>`)}${field('النوع', `<select name="type" id="f-type">${opts(LIB_TYPES)}</select>`)}${field('السنة', inp('year', '', 'inputmode="numeric" placeholder="2024"'))}</div>
-    <div class="grid wide">${field('العنوان', inp('title', '', 'required'))}${field('المؤلفون أو الجهة', inp('authors', '', 'placeholder="Lewis, C., & Hurd, J."'))}${field('الناشر أو المجلة', inp('publisher'))}${field('الرابط', inp('link', '', 'type="url" placeholder="https://"'))}</div>
-    ${field('التوثيق (APA)', area('apa', '', 'placeholder="اتركيه فارغًا ليُولَّد من الحقول أعلاه"'))}
-    <div class="grid wide">${field('ملخص قصير', area('summary'))}${field('كيف نستفيد منه في المشروع؟', area('use'))}</div>
-    ${field('يرتبط بسؤال البحث', checks('rqs', D.rqs.slice().sort((a, b) => a.code.localeCompare(b.code)).map(r => [r.code, r.code])))}
-    ${attachField()}
-    <label class="row small" style="font-weight:500"><input type="checkbox" name="verified" value="1"> تحقّقتُ من بيانات المرجع من مصدره الأصلي</label>
-    <div class="row"><button class="btn" type="submit">حفظ في المكتبة</button></div></form></details>`;
-};
-function libListHtml(list) {
-  if (!list.length) return '<div class="empty">لا عناصر في هذا التصنيف بعد.</div>';
-  return list.map(r => `<div class="rec"><div class="row between"><div class="row"><span class="chip plain">${esc(r.category)}</span><span class="chip plain">${esc(r.type || '')}</span>${r.verified ? '<span class="chip">موثّق</span>' : '<span class="chip warn">تحقّقي من البيانات</span>'}</div><div class="row">${r.link ? `<a class="btn ghost small" href="${esc(r.link)}" target="_blank" rel="noopener">فتح الرابط</a>` : ''}<button class="btn ghost small" data-act="lib-copy" data-id="${esc(r._id)}">نسخ التوثيق</button>${S.canEdit ? `<button class="btn ghost small" data-act="lib-ver" data-id="${esc(r._id)}">${r.verified ? 'إلغاء التوثيق' : 'وُثّق ✓'}</button><button class="btn ghost small" data-act="lib-del" data-id="${esc(r._id)}">${S.delArm === r._id ? 'تأكيد الحذف' : 'حذف'}</button>` : ''}</div></div>
-  <b style="font-size:16px">${esc(r.title)}</b><div class="small muted">${esc(r.apa || apaOf(r))}</div>
-  ${r.summary ? `<div class="body">${esc(r.summary)}</div>` : ''}${r.use ? `<div class="body"><b>كيف نستفيد منه:</b> ${esc(r.use)}</div>` : ''}${(r.rqs || []).length ? `<div class="row">${r.rqs.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>` : ''}${filesHtml(r.files)}</div>`).join('');
-}
-
-/* ---- Meeting minutes ---- */
-function minutesHtml(mid) {
-  const m = D.meetings.find(x => x.code === mid) || D.meetings.slice().sort(byNewest)[0];
-  if (!m) return '<p class="muted">لا اجتماعات مسجّلة بعد.</p>';
-  const st = D.settings; const notes = D.notes.filter(n => n.meetingId === m.code); const decs = D.decisions.filter(d => d.meetingId === m.code); const tasks = D.tasks.filter(t => t.meetingId === m.code);
-  return `<h2>محضر الاجتماع ${esc(m.code)}</h2><div class="rmeta"><span>${esc(st.projectName || 'بُرهان')}${st.school ? ' · ' + esc(st.school) : ''}</span><span>التاريخ: ${esc(fmtDate(m.date))}</span><span>الدورة: ${esc(m.cycleId || '—')}</span><span>الحضور: ${esc((m.attendees || []).join('، ') || '—')}</span>${m.minutesLink ? `<span>الرابط: ${esc(m.minutesLink)}</span>` : ''}</div>
-  <h3>الهدف</h3><p>${esc(m.goal || '—')}</p><h3>جدول الأعمال</h3><p style="white-space:pre-wrap">${esc(m.agenda || '—')}</p><h3>الأدلة التي نوقشت</h3><p style="white-space:pre-wrap">${esc(m.evidence || '—')}</p>
-  <h3>ما دوّنته العضوات</h3>${rpTable(['العضوة','المقرر','الأدلة المعروضة','ما نوقش','المقترح'], notes.filter(n => n.context === 'meeting').map(n => [esc(n.author), subjChip(n.subject), esc(n.discussed), esc(n.text), esc(n.proposal)]))}
-  <h3>القرارات</h3>${rpTable(['الرمز','الدليل','القرار','السبب','المشاركات'], decs.map(d => [esc(d.code), esc(d.evidence), esc(d.decision), esc(d.reason), esc((d.participants || []).join('، '))]))}${m.decisionsSummary ? `<p>${esc(m.decisionsSummary)}</p>` : ''}
-  <h3>المهام</h3>${rpTable(['المهمة','المسؤولة','الاستحقاق','الحالة'], tasks.map(t => [esc(t.title), esc(t.owner), esc(fmtDate(t.due)), t.status === 'done' ? 'مكتملة' : 'مفتوحة']))}
-  <h3>تأملات بعد الاجتماع</h3>${rpTable(['العضوة','ما سأغيّره','سؤال مفتوح'], notes.filter(n => n.context === 'after').map(n => [esc(n.author), esc(n.next), esc(n.openQuestion)]))}`;
-}
-
-/* tooltip */
-const tipEl = document.createElement('div'); tipEl.className = 'tip'; tipEl.hidden = true; tipEl.setAttribute('role', 'tooltip'); document.body.appendChild(tipEl);
-function showTip(t) { tipEl.textContent = t.dataset.tip; tipEl.hidden = false; const r = t.getBoundingClientRect(); const w = tipEl.offsetWidth, h = tipEl.offsetHeight; tipEl.style.left = Math.min(innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2)) + 'px'; tipEl.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + 'px'; }
-document.addEventListener('mouseover', e => { const t = e.target.closest && e.target.closest('[data-tip]'); if (t) showTip(t); else tipEl.hidden = true; });
-document.addEventListener('focusin', e => { const t = e.target.closest && e.target.closest('[data-tip]'); if (t) showTip(t); else tipEl.hidden = true; });
-document.addEventListener('scroll', () => { tipEl.hidden = true; }, true);
-
-/* extra events */
-document.addEventListener('change', e => {
-  const t = e.target; const rr = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
-  if (t.id === 'dashCycle') { S.dashCycle = t.value; rr(); }
-  if (t.id === 'dashInd') { S.dashInd = t.value; rr(); }
-  if (t.id === 'anInd') { S.anInd = t.value; rr(); }
-  if (t.id === 'anFrom') { S.anFrom = t.value; rr(); }
-  if (t.id === 'anTo') { S.anTo = t.value; rr(); }
-  if (t.id === 'qctx') { S.qctx = t.value; $('#qualOut').innerHTML = qualHtml(); }
-  if (t.id === 'qpr') { S.qpr = t.value; $('#qualOut').innerHTML = qualHtml(); }
-  if (t.id === 'repMeeting') { S.repMeeting = t.value; $('#repOut').innerHTML = minutesHtml(t.value); }
-});
-document.addEventListener('input', e => {
-  if (e.target.id === 'qq') { S.qq = e.target.value; clearTimeout(qualHtml.t); qualHtml.t = setTimeout(() => { $('#qualOut').innerHTML = qualHtml(); }, 200); }
-  if (e.target.id === 'libq') { S.libq = e.target.value; clearTimeout(libListHtml.t); libListHtml.t = setTimeout(() => { const cat = S.libCat, q = S.libq.trim(); $('#libOut').innerHTML = libListHtml(D.library.filter(r => (!cat || r.category === cat) && (!q || [r.title, r.authors, r.summary, r.use, r.apa].some(x => String(x || '').includes(q))))); }, 200); }
-});
-document.addEventListener('click', async e => {
-  const b = e.target.closest('button[data-act]'); if (!b) return; const act = b.dataset.act; const rr = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
-  if (act === 'an-tab') { S.anTab = b.dataset.tab; rr(); }
-  if (act === 'lib-cat') { S.libCat = b.dataset.c; rr(); }
-  if (act === 'lib-copy') { const r = D.library.find(x => x._id === b.dataset.id); if (r) { const txt = r.apa || apaOf(r); try { await navigator.clipboard.writeText(txt); toast('نُسخ التوثيق.'); } catch (x) { toast(txt); } } }
-  if (act === 'lib-ver') { const r = D.library.find(x => x._id === b.dataset.id); if (r) try { await S.db.collection('library').doc(r._id).update({verified: !r.verified}); } catch (x) { handleDbErr(x); } }
-  if (act === 'lib-del') { if (S.delArm !== b.dataset.id) { S.delArm = b.dataset.id; b.textContent = 'تأكيد الحذف'; return; } try { await S.db.collection('library').doc(b.dataset.id).delete(); S.delArm = ''; toast('حُذف العنصر.'); } catch (x) { handleDbErr(x); } }
-  if (act === 'minutes') { S.repType = 'minutes'; S.repMeeting = b.dataset.m; go('reports'); }
-  if (act === 'qual-export') { const rows = qualRows(); if (!rows.length || !S.downloads) { toast('لا نتائج للتصدير.'); return; } const cols = ['NoteID','Context','Subject','ClassName','LessonTitle','TeacherID','Date', ...QTEXT, 'Practices']; const data = rows.map(n => Object.assign({NoteID: n.code, Context: n.context, Subject: n.subject, ClassName: n.className, LessonTitle: n.lessonTitle, TeacherID: n.author, Date: n.date, Practices: n.practices}, Object.fromEntries(QTEXT.map(k => [k, n[k]])))); try { await S.downloads.save({filename: 'Qualitative_Search_' + today() + '.csv', data: csv(data, cols)}); toast('صُدّرت ' + rows.length + ' ملاحظة.'); } catch (x) { toast('أُلغي التنزيل.'); } }
-});
-
-/* =========================================================
-   5c. AI protocol, prompt templates, evidence→AI→decision chain,
-       role matrix, Microsoft 365 package
-   ========================================================= */
-const AI_STAGES = [
-  ['S1','اجتماع 1 · التشخيص: تنظيم أنماط الأخطاء'],
-  ['S2','اجتماع 2 · خط الأساس: أسئلة تشخيصية'],
-  ['S3','اجتماع 3 · التصميم: التمايز ومستويات الدعم'],
-  ['S4','اجتماع 4 · قبل التنفيذ: نقد V1 وتوقع الاستجابات'],
-  ['S5','اجتماع 5 · بعد الملاحظة: تنظيم الأدلة واقتراح V2'],
-  ['S6','اجتماع 6 · الإغلاق: التلخيص والتقرير'],
-  ['X','استخدام فردي خارج البروتوكول']];
-const STAGE_NAME = Object.fromEntries(AI_STAGES);
-const AI_PROTOCOL = [
-  ['S1','التشخيص','بعد أن تقرأ المعلمات العينات بأنفسهن','القائدة مع الفريق','تنظيم أنماط الأخطاء في عينات مجهّلة','قبل الدرس','حلّلي الأدلة'],
-  ['S2','خط الأساس','بعد تحديد المشكلة','معلمة كل مقرر','بناء أسئلة تشخيصية لمهمة خط الأساس','قبل الدرس','شخّصي'],
-  ['S3','التصميم','بعد قراءة درجات خط الأساس','معلمة المادة + الفريق','اقتراح مسارات تمايز ومستويات دعم','قبل الدرس','اقترحي تمايزًا · صمّمي تلميحات'],
-  ['S4','قبل التنفيذ','بعد كتابة V1','الفريق','نقد V1 وتوقّع استجابات الطالبات','قبل الدرس','انتقدي V1'],
-  ['—','أثناء الحصة','—','الملاحِظات','لا استخدام للذكاء الاصطناعي: نجمع بيانات خامًا كما حدثت','أثناء الدرس','—'],
-  ['S5','بعد الملاحظة','بعد أن يحلّل الفريق الملاحظات بنفسه','الفريق','تنظيم الملاحظات واقتراح تعديلات V2','بعد الدرس','اقترحي V2'],
-  ['S6','الإغلاق','بعد اعتماد النتائج','القائدة','المساعدة في تلخيص القرارات وكتابة التقرير','بعد الدرس','لخّصي القرارات · انقلي المبدأ']];
-const AI_TEMPLATES = [
-  ['analyze','حلّلي الأدلة','S1','تحليل أنماط الأخطاء','إليكِ ملخصًا مجهّلًا لأعمال طالبات في مقرر [المقرر]، الصف [الصف]، في مهمة [وصف المهمة]:\n[الصقي هنا الإجابات أو ملخصها برموز S فقط]\n\nصنّفي الإجابات في أنماط أخطاء أو تفكير، واذكري لكل نمط: وصفه، وعدد الطالبات فيه، ومثالًا واحدًا. لا تقترحي حلولًا بعد.'],
-  ['diagnose','شخّصي','S2','أسئلة تكشف التفكير','هذه أنماط الأخطاء التي حددها الفريق في [المقرر]:\n[الأنماط]\n\nما الأسباب المحتملة لكل نمط (نقص معرفة سابقة، مفهوم خاطئ، ضعف مهارة)؟ ثم اقترحي ثلاثة أسئلة تشخيصية قصيرة تميّز بين هذه الأسباب، يُصحَّح كل سؤال بمقياس 0–4.'],
-  ['differentiate','اقترحي تمايزًا','S3','مستويات دعم متدرجة','هدف الدرس: [الهدف]\nالمقرر والصف: [المقرر، الصف]\nتوزيع الطالبات حسب خط الأساس: مستوى أ (0–1): [عدد]، مستوى ب (2): [عدد]، مستوى ج (3–4): [عدد].\nنقطة التعثّر الرئيسة: [التعثّر]\n\nاقترحي مسارًا لكل مستوى يحافظ على الهدف نفسه: نقطة البداية، نوع الدعم، والمهمة. وأنهِ بمهمة خروج واحدة للجميع.'],
-  ['hints','صمّمي تلميحات','S3','مستويات دعم متدرجة','هذه مهمة للطالبات: [المهمة]\n\nاكتبي ثلاثة مستويات من التلميح المتدرج دون إعطاء الحل: تلميح 1 سؤال يوجّه الانتباه، تلميح 2 خطوة أولى موجّهة، تلميح 3 مثال محلول جزئيًا مشابه.'],
-  ['critique','انتقدي V1','S4','تعديل درس قائم','هذه خطة درس البحث V1:\n[الصقي الخطة]\n\nتوقّعي لكل مهمة ثلاث استجابات محتملة من الطالبات (صحيحة، جزئية، خاطئة) ونقاط التعثّر المتوقعة. ثم أشيري إلى ثلاثة مواضع قد لا ينجح فيها التمايز، ولماذا.'],
-  ['v2','اقترحي V2','S5','تعديل درس قائم','هذه خطة V1:\n[الخطة]\n\nوهذا ملخص ملاحظات الفريق المجهّلة وقراراته:\n[الملاحظات والقرارات]\n\nاقترحي تعديلات محددة للنسخة V2، واربطي كل تعديل بدليل من الملاحظات. لا تغيّري هدف الدرس.'],
-  ['summarize','لخّصي القرارات','S6','أخرى','هذه قرارات اجتماع الفريق وأدلتها:\n[القرارات]\n\nلخّصيها في جدول: الدليل، القرار، السبب، الإجراء، ما سنقيسه بعد التطبيق. لا تضيفي قرارات لم تُذكر.'],
-  ['transfer','انقلي المبدأ','S6','مهمة نقل التعلّم','نجحت هذه الممارسة في مقرر [المقرر أ]:\n[وصف الممارسة والدليل على نجاحها]\n\nكيف نطبّق المبدأ نفسه في مقرر [المقرر ب] للصف [الصف]؟ قدّمي مثالًا واحدًا محددًا ومهمة خروج تقيس الأثر.']];
-const ROLES = ['قائدة المشروع','معلمة مشاركة','باحثة','ملاحِظة درس'];
-const myRole = () => (myMember() || {}).role || '';
-const isLeader = () => S.canEdit || myRole() === 'قائدة المشروع';
-const isResearch = () => isLeader() || myRole() === 'باحثة';
-const WHO = [
-  ['أثناء الحصة','الملاحِظات في درس البحث','كل الفريق عندما يلاحظن','✓','✓','—','✓'],
-  ['خارج الحصة','كل معلمة عن فصلها','—','✓','✓','—','—'],
-  ['في الاجتماع','كل عضوة حضرت','—','✓','✓','✓','—'],
-  ['بعد الاجتماع (تأمل)','كل معلمة','—','✓','✓','—','—'],
-  ['دليل تعلّم طالبة','معلمة الفصل','القائدة للمراجعة','✓','✓','—','—'],
-  ['استوديو AI','من استخدمت الذكاء الاصطناعي','الفريق في الاجتماعات 1–6','✓','✓','✓','—'],
-  ['نسخ الدروس','المعلمة المنفّذة','من تعيد التصميم','✓','✓','—','—'],
-  ['الاجتماعات','القائدة أو موثّقة الاجتماع','—','✓','—','—','—'],
-  ['القرارات والمهام','موثّقة الاجتماع','القائدة تعتمد','✓','✓','—','—'],
-  ['قياس ممارسات المعلمات','الباحثة أو القائدة','—','✓','—','✓','—'],
-  ['المكتبة والمراجع','أي عضوة','الباحثة تتحقق من التوثيق','✓','✓','✓','✓'],
-  ['الإعداد ونقل المراحل','القائدة','—','✓','—','—','—'],
-  ['التصدير للتحليل','الباحثة أو القائدة','—','✓','—','✓','—']];
-const whoBadge = key => { const w = WHO.find(x => x[0] === key); return w ? `<span class="chip plain">يملؤه: ${esc(w[1])}</span>` : ''; };
-
-/* AI chain: Evidence → AI suggestion → Human judgment → Differentiation decision → Outcome */
-function chainRows(list) {
-  return list.map(a => {
-    const dec = D.decisions.find(d => d.code === a.decisionLink) || D.decisions.find(d => d.aiLink === a.code);
-    const steps = {ev: a.evidenceRefs || a.studentEvidence || '', ai: (a.aiOutput || '').slice(0, 220), judge: a.decision ? (DEC[a.decision] + (a.reason ? ': ' + a.reason : '')) : '', dec: dec ? dec.code + ' · ' + (dec.decision || '') : '', out: a.observedOutcome || (dec && dec.outcome) || ''};
-    return {a, dec, steps, complete: ['ev','ai','judge','dec','out'].every(k => steps[k])};
-  });
-}
-const chainComplete = c => chainRows(inCy(D.ai, c)).filter(r => r.steps.ev && r.steps.ai && r.steps.judge && r.steps.dec).length;
-function chainTable(rows) {
-  if (!rows.length) return '<div class="empty">لا سجلات ذكاء اصطناعي بعد.</div>';
-  const cell = s => s ? esc(s) : '<span class="chip warn">ناقص</span>';
-  return `<div class="scroll"><table><thead><tr><th>السجل</th><th>المرحلة</th><th>١ الدليل المجهّل</th><th>٢ مقترح AI</th><th>٣ حكم المعلمة/الفريق</th><th>٤ قرار التمايز</th><th>٥ النتيجة</th></tr></thead><tbody>${rows.map(r => `<tr><td><b>${esc(r.a.code)}</b><div class="tiny muted">${esc(r.a.scope || '')} · ${esc(r.a.author || '')}</div></td><td class="small">${esc(STAGE_NAME[r.a.stage] || '—')}</td><td class="small">${cell(r.steps.ev)}</td><td class="small">${cell(r.steps.ai)}</td><td class="small">${cell(r.steps.judge)}</td><td class="small">${cell(r.steps.dec)}</td><td class="small">${cell(r.steps.out)}</td></tr>`).join('')}</tbody></table></div>`;
-}
-
-/* AI page wrapper with tabs */
-V.ai = () => {
-  const t = S.aiTab || 'studio'; const tabs = [['guide','مساعد بُرهان: متى ولماذا'],['studio','الاستوديو'],['templates','قوالب الأوامر'],['chain','سلسلة الدليل والقرار']];
-  let body = '';
-  if (t === 'guide') body = `<section class="panel"><h2>الذكاء الاصطناعي جزء من دورة بحث الدرس، لا صفحة جانبية</h2>
-    <div class="grid wide">
-      <div class="stat" style="gap:6px"><b style="font-size:17px">من يستخدمه؟</b><span style="font-size:14px;color:var(--fg)">الفريق في الاجتماعات المحددة، ومعلمة المادة عند تصميم درسها. والملاحِظات لا يستخدمنه أثناء الحصة.</span></div>
-      <div class="stat" style="gap:6px"><b style="font-size:17px">لماذا نستخدمه؟</b><span style="font-size:14px;color:var(--fg)">لتسريع تنظيم الأدلة، وتوسيع البدائل، وكشف ما قد لا نراه. ثم يبقى الحكم للفريق.</span></div>
-      <div class="stat" style="gap:6px"><b style="font-size:17px">متى لا نستخدمه؟</b><span style="font-size:14px;color:var(--fg)">أثناء الحصة · قبل أن يحلل الفريق الأدلة بنفسه · لوضع الدرجات النهائية · مع أي اسم أو بيانات تعريفية · لاتخاذ القرار بدلًا منا.</span></div>
-      <div class="stat" style="gap:6px"><b style="font-size:17px">ماذا نسجّل؟</b><span style="font-size:14px;color:var(--fg)">الدورة والاجتماع · فردي أم جماعي · الدليل المجهّل · الغرض · الأمر · مخرج AI كما هو · قبول/تعديل/رفض · السبب · التعديل البشري · قرار التمايز المرتبط · نسخة الدرس · النتيجة بعد التطبيق.</span></div>
-    </div></section>
-    <section class="panel"><h2>البروتوكول الثابت في كل دورة</h2><p class="small muted">القاعدة: تحليل بشري أولًا، ثم الذكاء الاصطناعي، ثم حكم الفريق.</p><div class="scroll"><table><thead><tr><th>الاجتماع</th><th>المرحلة</th><th>متى بالضبط</th><th>من</th><th>الغرض</th><th>قبل/بعد الحصة</th><th>القالب</th></tr></thead><tbody>${AI_PROTOCOL.map(r => `<tr${r[0] === '—' ? ' style="background:var(--amber-soft)"' : ''}>${r.map((x, i) => `<td${i === 0 ? ' style="font-weight:700;white-space:nowrap"' : ''}>${esc(i === 0 && x !== '—' ? 'اجتماع ' + x.slice(1) : x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-    <div class="ok">التسلسل البحثي: دليل تعلّم ← تحليل بشري ← استخدام AI ← حكم الفريق ← قرار تمايز ← تطبيق ← دليل نتيجة</div>
-    <p class="small muted">لا تكتمل الدورة في «دورة بحث الدرس» دون سجل AI قبل الدرس (اجتماع 1–4) وبعده (اجتماع 5)، كلٌّ منهما بحكم بشري مكتوب.</p></section>`;
-  if (t === 'templates') body = `<section class="panel"><h2>قوالب أوامر جاهزة</h2><p class="small muted">استبدلي ما بين الأقواس [ ] ببياناتكم المجهّلة. «استخدمي في الاستوديو» يملأ الطلب والمرحلة ونوع الطلب.</p>
-    <div class="ledger">${AI_TEMPLATES.map(([k, n, st, mode, txt]) => `<div class="rec"><div class="row between"><div class="row"><b style="font-size:16px">${esc(n)}</b><span class="chip plain">${esc(STAGE_NAME[st])}</span></div><div class="row"><button class="btn small" data-act="tpl-use" data-k="${k}">استخدمي في الاستوديو</button><button class="btn ghost small" data-act="tpl-copy" data-k="${k}">نسخ</button></div></div><div class="out" style="min-height:0">${esc(txt)}</div></div>`).join('')}</div></section>`;
-  if (t === 'chain') { const rows = chainRows(bySubj(D.ai).slice().sort(byNewest)); const full = rows.filter(r => r.complete).length;
-    body = `<section class="panel"><div class="row between"><h2>الدليل ← مقترح AI ← حكم بشري ← قرار تمايز ← النتيجة</h2><button class="btn ghost small" data-act="go-report" data-t="aichain">التقرير</button></div><p class="small muted">من أقوى الأدلة لسؤال البحث الرابع. السجل المكتمل له خمس حلقات. أكملي الناقص من «عرض النصين وتسجيل الأثر» في الاستوديو، أو اربطي القرار من «القرارات».</p>${subjBar()}<div class="grid"><div class="stat"><b>${rows.length}</b><span>سجل AI</span></div><div class="stat"><b>${full}</b><span>سلسلة مكتملة</span></div><div class="stat"><b>${rows.filter(r => !r.dec).length}</b><span>بلا قرار تمايز مرتبط</span></div><div class="stat"><b>${rows.filter(r => !r.steps.out).length}</b><span>بلا نتيجة بعد التطبيق</span></div></div>${chainTable(rows)}</section>`; }
-  if (t === 'studio') body = V.aiStudio();
-  return `<div><h1>الذكاء الاصطناعي في بُرهان</h1><p class="lede">الذكاء الاصطناعي يقترح، والفريق يحكم ويقرّر. كل استخدام يُوثَّق بنصّه وحكمه وقراره ونتيجته.</p></div>
-  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === t}" data-act="ai-tab" data-tab="${k}">${l}</button>`).join('')}</div>${body}`;
-};
-
-/* Microsoft 365 package */
-const M365_LISTS = [['team','Burhan_Team'],['classes','Burhan_Classes'],['cycles','Burhan_Cycles'],['lessons','Burhan_LessonVersions'],['notes','Burhan_Notes'],['evidence','Burhan_StudentEvidence'],['ai','Burhan_AIUsage'],['decisions','Burhan_Decisions'],['meetings','Burhan_Meetings'],['tasks','Burhan_Tasks'],['practice','Burhan_TeacherPractice'],['instruments','Burhan_Instruments'],['rqs','Burhan_ResearchMap'],['library','Burhan_Library'],['exports','Burhan_ExportLog']];
-const M365_COMMON = ['code','studyPhase','cycleId','author','createdAt'];
-const M365_CTX = ['subject','classId','className','studentCount','lessonId','lessonCode','lessonTitle','date'];
-const M365_SCHEMA = {
-  team: ['code','discipline','role','status','joined'],
-  classes: ['code','name','count','subject','grade','teacher','classRole','createdAt'],
-  cycles: ['code','title','subject','startDate','phase','studyPhase','createdAt'],
-  lessons: [...M365_COMMON,'lessonId','version','title','subject','grade','classId','className','studentCount','date','changeNote','decisionId','source','aiRecord',...LESSON_FIELDS.map(f => f[0]),'body'],
-  ai: [...M365_COMMON,...M365_CTX,'stage','scope','mode','tool','goal','studentEvidence','evidenceRefs','prompt','aiOutput','teacherFinal','decision','reason','modification','decisionLink','baseLessonId','appliedVersion','diffStats','practices','observedOutcome','reflection'],
-  notes: [...M365_COMMON,'context',...M365_CTX,'time','target','moment','level','task','observed','stumble','promptUsed','supportType','response','learningEvidence','kind','text','evidenceRef','meetingId','discussed','proposal','noticed','learned','change','next','openQuestion','practices','files'],
-  meetings: [...M365_COMMON,'date','attendees','goal','agenda','evidence','discussion','decisionsSummary','reflection','minutesLink','durationMin','mode'],
-  decisions: [...M365_COMMON,'meetingId','subject','date','situation','evidence','alternatives','decision','reason','action','aiLink','participants','status','outcome'],
-  evidence: [...M365_COMMON,...M365_CTX,'studentCode','timePoint','evidenceType','supportLevel','explanation','transfer','independence','verification','aiUse','instrument','note','entry','files'],
-  tasks: [...M365_COMMON,'title','owner','due','phase','meetingId','status','doneAt'],
-  practice: [...M365_COMMON,'teacher','measurePoint','date','instrument',...PRACTICES.map(p => 'score_' + p[0]),'note'],
-  instruments: ['code','name','version'],
-  rqs: ['code'],
-  library: ['code','category','type','title','authors','year','publisher','link','apa','summary','use','rqs','verified','addedBy','createdAt','files'],
-  exports: ['code','dataset','filters','rows','deidentified','author','createdAt']};
-const M365_NUM = new Set(['count','phase','version','studentCount','explanation','transfer','independence','verification','durationMin','rows','year',...PRACTICES.map(p => 'score_' + p[0])]);
-const M365_DATE = new Set(['date','due','startDate','joined','doneAt']);
-const M365_CHOICE = new Set(['subject','discipline','role','status','classRole','studyPhase','context','moment','level','supportType','kind','timePoint','evidenceType','supportLevel','decision','stage','scope','mode','tool','measurePoint','aiUse','category','type','source']);
-const M365_NOTE = new Set(['observed','stumble','promptUsed','response','learningEvidence','text','discussed','proposal','noticed','learned','change','next','openQuestion','goal','agenda','evidence','discussion','decisionsSummary','reflection','situation','alternatives','reason','action','outcome','prompt','aiOutput','teacherFinal','modification','studentEvidence','observedOutcome','summary','use','apa','note','changeNote','body',...LESSON_FIELDS.map(f => f[0])]);
-const M365_LINK = {cycleId:'Burhan_Cycles', classId:'Burhan_Classes', lessonId:'Burhan_LessonVersions', baseLessonId:'Burhan_LessonVersions', appliedVersion:'Burhan_LessonVersions', meetingId:'Burhan_Meetings', decisionId:'Burhan_Decisions', decisionLink:'Burhan_Decisions', aiLink:'Burhan_AIUsage', aiRecord:'Burhan_AIUsage', author:'Burhan_Team', teacher:'Burhan_Team', owner:'Burhan_Team', instrument:'Burhan_Instruments'};
-const m365Type = k => k === 'code' ? 'Title (المفتاح)' : (k === 'createdAt' ? 'Date and time' : (M365_NUM.has(k) ? 'Number' : (M365_DATE.has(k) ? 'Date' : (M365_CHOICE.has(k) ? 'Choice' : (M365_NOTE.has(k) ? 'Multiple lines of text' : 'Single line of text')))));
-async function exportM365() {
-  if (!S.downloads) return; if (typeof JSZip === 'undefined') { toast('تعذّر تحميل أداة الضغط. أعيدي فتح الصفحة.'); return; }
-  const zip = new JSZip(); let total = 0; const schema = [];
-  M365_LISTS.forEach(([c, name]) => {
-    const rows = D[c].map(r => { const o = {}; Object.entries(r).forEach(([k, v]) => { if (k === 'userId' || k === '_id') return; if (c === 'practice' && k === 'scores' && v && typeof v === 'object') { Object.entries(v).forEach(([pk, pv]) => { o['score_' + pk] = pv; }); return; } o[k] = v == null ? '' : (Array.isArray(v) ? v.map(x => typeof x === 'object' ? (x.name || JSON.stringify(x)) : x).join('|') : (typeof v === 'object' ? JSON.stringify(v) : v)); }); if (!o.code) o.code = r._id; return o; });
-    const cols = [...new Set([...(M365_SCHEMA[c] || ['code']), ...rows.flatMap(r => Object.keys(r))])];
-    zip.file(name + '.csv', csv(rows, cols)); total += rows.length;
-    cols.forEach(k => schema.push({List: name, Column: k, SharePointType: m365Type(k), LinksTo: M365_LINK[k] || '', Required: k === 'code' ? 'Yes' : ''}));
-  });
-  zip.file('Schema_جدول_الأعمدة.csv', csv(schema, ['List','Column','SharePointType','LinksTo','Required']));
-  zip.file('README_اقرئيني.txt', 'حزمة بُرهان لـ Microsoft 365 · ' + today() + '\n\n' +
-    'المحتوى: ' + M365_LISTS.length + ' ملف CSV، كل ملف = قائمة واحدة في Microsoft Lists، بكل أعمدتها حتى لو كانت فارغة.\n' +
-    'Schema_جدول_الأعمدة.csv يبيّن نوع كل عمود في SharePoint وبأي قائمة يرتبط.\n\n' +
-    'الخطوات:\n1) أنشئي موقع SharePoint للفريق (أو استخدمي موقع المدرسة) باسم: مشروع بُرهان.\n' +
-    '2) في الموقع: جديد ← قائمة ← من CSV، ثم اختاري الملف. كرّري لكل ملف، واجعلي اسم القائمة اسم الملف نفسه.\n' +
-    '3) عند المعاينة راجعي نوع كل عمود حسب جدول الأعمدة (رقم، تاريخ، اختيار، نص متعدد الأسطر).\n' +
-    '4) عمود code هو المفتاح؛ ضعيه في عمود Title. الربط بين القوائم بالرموز: cycleId, classId, lessonId, meetingId, studentCode, author.\n' +
-    '5) في Power Apps: إنشاء ← من SharePoint ← اختاري القائمة (ابدئي بـ Burhan_Notes ثم Burhan_StudentEvidence) فيُبنى تطبيق نماذج تلقائيًا.\n' +
-    '6) Power BI أو Excel يقرأ القوائم نفسها للتحليل.\n\n' +
-    'الخصوصية: لا أسماء ولا معرّفات حسابات. ملف ربط الأسماء بالرموز يبقى خارج SharePoint عند القائدة.\n');
-  try { const blob = await zip.generateAsync({type: 'blob'}); await S.downloads.save({filename: 'Burhan_Microsoft365_' + today() + '.zip', data: blob}); await create('exports', 'X', 3, {dataset: 'Burhan_Microsoft365.zip', filters: 'كل القوائم · كل الأوضاع', rows: total, deidentified: true, author: myCode() || '—', createdAt: new Date().toISOString()}); toast('نُزّلت الحزمة: ' + M365_LISTS.length + ' قائمة، ' + total + ' سجل، مع جدول الأعمدة.'); }
-  catch (x) { toast(x && x.code === 'declined' ? 'أُلغي التنزيل.' : 'تعذّر إنشاء الحزمة.'); }
-}
-
-/* events */
-document.addEventListener('click', async e => {
-  const b = e.target.closest('button[data-act]'); if (!b) return; const act = b.dataset.act;
-  if (act === 'ai-tab') { S.aiTab = b.dataset.tab; render(); window.scrollTo(0, 0); }
-  if (act === 'tpl-copy') { const t = AI_TEMPLATES.find(x => x[0] === b.dataset.k); try { await navigator.clipboard.writeText(t[4]); toast('نُسخ القالب.'); } catch (x) { toast('انسخي القالب يدويًا من المربع.'); } }
-  if (act === 'tpl-use') { const t = AI_TEMPLATES.find(x => x[0] === b.dataset.k); S.aiTab = 'studio'; render(); const f = $('#aiForm'); if (f) { f.prompt.value = t[4]; f.stage.value = t[2]; if ([...f.mode.options].some(o => o.value === t[3])) f.mode.value = t[3]; f.prompt.focus(); f.prompt.scrollIntoView({block: 'center'}); S.dirty = true; toast('عبّئي ما بين الأقواس ثم أرسلي.'); } }
-  if (act === 'm365') exportM365();
-});
-
-/* =========================================================
-   6. Render (never re-render under the user's hands)
-   ========================================================= */
-function renderNavBase() {
-  $('#nav').innerHTML = NAV.map(([g, items]) => `<div class="navgroup">${esc(g)}</div>` + items.map(([k, l]) => `<button class="nav" data-act="nav" data-view="${k}"${k === S.view ? ' aria-current="page"' : ''}>${icon(k === 'rec' ? 'rec' : k)}<span>${l}</span></button>`).join('')).join('');
-  const me = myMember(); const c = curCycle();
-  $('#who').innerHTML = S.err ? esc(S.err) : `${me ? `أنتِ: <b>${esc(me.code)}</b> · ${esc(me.discipline || '')}` : `حسابك غير مرتبط برمز — <button data-act="nav" data-view="setup">اربطيه</button>`}<br>${c ? `الدورة <b>${esc(c.code)}</b> · المرحلة <b>${esc(c.phase)}</b>: ${esc(phaseOf(c).n)}<br>` : ''}البيانات: <b>${esc(phase())}</b>`;
-}
-function render() {
-  renderNav(); const v = $('#view');
-  v.innerHTML = (V[S.view] || V.home)(); S.dirty = false;
-  if (S.view === 'ai' && $('#aiSend')) { $('#aiSend').disabled = !S.sample; if (!S.sample) $('#aiStatus').textContent = 'الإرسال المباشر إلى Claude غير متاح هنا؛ استخدمي أداة خارجية والصقي النصين.'; }
-  $$('form [data-classfor]').forEach(sel => toggleNewClass(sel));
-  showExample(); afterRender();
-}
-function isBusy() { const a = document.activeElement; return S.dirty || S.aiBusy || (a && a !== document.body && a.closest && a.closest('#view') && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
-function softUpdate() {
-  renderNav();
-  if (!isBusy()) { const y = window.scrollY; render(); window.scrollTo(0, y); return; }
-  $$('[data-slot]').forEach(el => { const fn = SLOTS[el.dataset.slot]; if (fn) el.innerHTML = fn(); });
-}
-let raf = 0; const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(softUpdate); };
-function go(view) { S.view = view; try { localStorage.setItem('burhan.view', view); } catch (x) {} render(); window.scrollTo(0, 0); }
-
-/* =========================================================
-   7. Events
-   ========================================================= */
-function toggleNewClass(sel) { const f = sel.closest('form'); const box = f && f.querySelector('[data-newclass]'); if (box) box.hidden = sel.value !== '__new'; }
-function showExample() {
-  const f = $('form[data-ctx="in"]'); if (!f) return; const box = f.querySelector('[data-example]'); if (!box) return;
-  const s = SUBJ_BY_NAME[(f.querySelector('input[name=subject]:checked') || {}).value];
-  box.innerHTML = s ? `<div class="hint" style="background:var(--surface2);padding:8px 12px;border-radius:8px"><b>مثال من ${esc(s.n)}:</b> ${esc(s.obs)}</div>` : '';
-}
-document.addEventListener('input', e => { if (e.target.closest('#view form')) S.dirty = true; if (e.target.name === 'teacherFinal' || e.target.name === 'aiOutput') updateAiDiff(); });
-document.addEventListener('change', e => {
-  const t = e.target;
-  if (t.closest('#view form')) S.dirty = true;
-  if (t.name === 'subject' && t.type === 'radio') { const f = t.closest('form'); const sel = f.querySelector('[data-classfor]'); if (sel) { sel.innerHTML = classOptions(t.value, ''); toggleNewClass(sel); } const li = f.querySelector('#f-lessonTitle'); if (li && SUBJ_BY_NAME[t.value]) li.placeholder = 'مثال: ' + SUBJ_BY_NAME[t.value].ex; showExample(); }
-  if (t.matches('[data-classfor]')) toggleNewClass(t);
-  if (t.id === 'cmpA' || t.id === 'cmpB') { const a = lessonOf($('#cmpA').value), b = lessonOf($('#cmpB').value); $('#cmpOut').innerHTML = a && b ? (() => { const d = diff(lessonText(a), lessonText(b)); return `<p class="small muted">الأخضر: أُضيف في ${esc(b._id)} · الأحمر: حُذف من ${esc(a._id)}</p><div class="diff">${d.html}</div>`; })() : '<div class="empty">اختاري نسختين.</div>'; }
-  if (t.id === 'repCycle') $('#repOut').innerHTML = buildReport(S.repType, t.value);
-  if (t.matches('[data-disc]')) { S.db && S.db.collection('team').doc(t.dataset.disc).update({discipline: t.value}).then(() => toast('حُدّث التخصص.')).catch(handleDbErr); }
-  if (t.matches('[data-role]')) { S.db && S.db.collection('team').doc(t.dataset.role).update({role: t.value}).then(() => toast('حُدّث الدور.')).catch(handleDbErr); }
-  if (t.name === 'decision' && t.form) t.form.dataset.decTouched = '1';
-});
-let diffT = 0;
-function updateAiDiff() { clearTimeout(diffT); diffT = setTimeout(() => { const f = $('#aiForm'); if (!f) return; const a = f.aiOutput.value, b = f.teacherFinal.value; $('#aiDiff').innerHTML = aiDiffHtml(a, b); if (a && b && !f.dataset.decTouched) { const r = f.querySelector(`input[name=decision][value=${suggestDecision(diff(a, b))}]`); if (r) r.checked = true; } }, 350); }
-document.addEventListener('click', async e => {
-  const b = e.target.closest('button[data-act]'); if (!b) return; const act = b.dataset.act;
-  if (act === 'nav') go(b.dataset.view);
-  if (act === 'go-rec') { S.recType = b.dataset.t || ''; go('rec'); }
-  if (act === 'go-meet') { S.meetTab = b.dataset.t; go('meetings'); }
-  if (act === 'go-report') { S.repType = b.dataset.t; go('reports'); }
-  if (act === 'subj') { S.subj = b.dataset.s; try { localStorage.setItem('burhan.subj', S.subj); } catch (x) {} const busy = isBusy(); if (busy) { $$('[data-slot]').forEach(el => { const fn = SLOTS[el.dataset.slot]; if (fn) el.innerHTML = fn(); }); $$('[data-act=subj]').forEach(x => { const on = x.dataset.s === S.subj; x.setAttribute('aria-pressed', on); x.style.boxShadow = on && x.dataset.s ? 'inset 0 0 0 2px currentColor' : ''; x.classList.toggle('ghost', !(on && !x.dataset.s) ); }); } else { const y = window.scrollY; render(); window.scrollTo(0, y); } }
-  if (act === 'meet-tab') { S.meetTab = b.dataset.tab; render(); }
-  if (act === 'res-tab') { S.resTab = b.dataset.tab; render(); }
-  if (act === 'pb-tab') { S.pbTab = b.dataset.tab; render(); }
-  if (act === 'rep') { S.repType = b.dataset.t; const y = window.scrollY; render(); window.scrollTo(0, y); }
-  if (act === 'phase-sel') { S.phaseSel = Number(b.dataset.p); render(); }
-  if (act === 'task-toggle') { const t = D.tasks.find(x => x._id === b.dataset.id); if (t) try { await S.db.collection('tasks').doc(t._id).update({status: t.status === 'done' ? 'open' : 'done', doneAt: t.status === 'done' ? '' : today()}); toast(t.status === 'done' ? 'أُعيد فتح المهمة.' : 'أحسنتِ، اكتملت المهمة.'); } catch (x) { handleDbErr(x); } }
-  if (act === 'dec-status') { const d = D.decisions.find(x => x._id === b.dataset.id); if (d) try { await S.db.collection('decisions').doc(d._id).update({status: d.status === 'modified' ? 'continued' : 'modified'}); } catch (x) { handleDbErr(x); } }
-  if (act === 'link') { try { await S.db.collection('team').doc(b.dataset.id).update({userId: S.uid}); toast('رُبط حسابك بالرمز.'); } catch (x) { handleDbErr(x); } }
-  if (act === 'unlink') { const m = myMember(); if (m) try { await S.db.collection('team').doc(m._id).update({userId: ''}); } catch (x) { handleDbErr(x); } }
-  if (act === 'phase') { const c = D.cycles.find(x => x._id === b.dataset.id); if (c) { const gaps = phaseGaps(c).filter(g => !g.ok); const p = Math.min(phasesOf(c).length, Math.max(1, Number(c.phase || 1) + Number(b.dataset.d))); try { await S.db.collection('cycles').doc(c._id).update({phase: p}); S.phaseSel = p; toast(c.code + ': المرحلة ' + p + ' · ' + phasesOf(c)[p - 1].n + (Number(b.dataset.d) > 0 && gaps.length ? ` (بقي ${gaps.length} دليل ناقص في المرحلة السابقة)` : '')); } catch (x) { handleDbErr(x); } } }
-  if (act === 'ai-compose') { const f = $('#aiForm'); f.prompt.value = composePrompt(Object.assign(formData(f), {})); S.dirty = true; }
-  if (act === 'ai-copy') { const f = $('#aiForm'); if (!f.aiOutput.value) { toast('لا يوجد مقترح بعد. أرسلي الطلب أو الصقي مخرج الأداة.'); return; } f.teacherFinal.value = f.aiOutput.value; S.dirty = true; updateAiDiff(); f.teacherFinal.focus(); }
-  if (act === 'ai-stop') { if (S.aiAbort) S.aiAbort.abort(); }
-  if (act === 'ai-send') sendAi();
-  if (act === 'export') exportDs(b.dataset.ds);
-  if (act === 'rep-dl') reportDownload();
-  if (act === 'rep-copy') { const txt = $('#repOut').innerText; try { await navigator.clipboard.writeText(txt); toast('نُسخ نص التقرير.'); } catch (x) { const r = document.createRange(); r.selectNodeContents($('#repOut')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('حُدّد النص؛ انسخيه يدويًا.'); } }
-});
-document.addEventListener('toggle', e => {
-  const d = e.target; if (!(d instanceof HTMLDetailsElement) || !d.open || !d.dataset.aiopen) return;
-  const a = D.ai.find(x => x._id === d.dataset.aiopen); const host = d.querySelector('[data-diffhost]'); if (!a || !host) return;
-  host.innerHTML = `<div class="twin" style="margin-top:10px"><div><h3>ما كتبه الذكاء الاصطناعي</h3><div class="out">${esc(a.aiOutput || '—')}</div></div><div><h3>ما اعتمدته المعلمة</h3><div class="out">${esc(a.teacherFinal || '—')}</div></div></div><h3 style="margin-top:12px">الفروق</h3>${aiDiffHtml(a.aiOutput, a.teacherFinal)}${a.modification ? `<p class="body"><b>ماذا غيّرت ولماذا:</b> ${esc(a.modification)}</p>` : ''}${help('الطلب المرسل', `<div class="out">${esc(a.prompt || '—')}</div>`)}`;
-}, true);
-
-async function sendAi() {
-  const f = $('#aiForm'); if (!S.sample || S.aiBusy) return;
-  if (!f.prompt.value.trim()) f.prompt.value = composePrompt(formData(f));
-  S.aiBusy = true; S.dirty = true; S.aiAbort = new AbortController();
-  $('#aiSend').disabled = true; $('#aiStop').hidden = false; $('#aiStatus').textContent = 'Claude يفكّر… قد يستغرق دقيقة.'; f.tool.value = 'Claude داخل بُرهان';
-  try {
-    const r = await S.sample(f.prompt.value, {signal: S.aiAbort.signal, cache: false, onText: ({text}) => { f.aiOutput.value = text; $('#aiStatus').textContent = 'يكتب…'; }});
-    f.aiOutput.value = r.text; $('#aiStatus').textContent = r.truncated ? 'انتهى (المخرج مقتطع).' : 'انتهى. اضغطي «ابدئي التحرير من المقترح».';
-  } catch (x) {
-    if (x && x.text) f.aiOutput.value = x.text;
-    const m = {cancelled:'أُوقف الطلب.', not_granted:'لم يُسمح باستخدام Claude هنا؛ استخدمي أداة خارجية والصقي النص.', rate_limited:'طلبات كثيرة الآن؛ انتظري قليلًا.', prompt_too_large:'الطلب طويل جدًا؛ اختصريه.', refused:'اعتذر Claude عن الطلب؛ أعيدي صياغته.'};
-    $('#aiStatus').textContent = m[x && x.code] || 'تعذّر الحصول على مقترح. حاولي مرة أخرى.';
-    if (x && x.code === 'not_granted') S.sample = null;
-  } finally { S.aiBusy = false; S.aiAbort = null; $('#aiSend').disabled = !S.sample; $('#aiStop').hidden = true; updateAiDiff(); }
-}
-
-document.addEventListener('submit', async e => {
-  const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault();
-  const kind = f.dataset.form; const o = formData(f); const keep = e.submitter && e.submitter.dataset.keep;
-  const btns = $$('button[type=submit]', f); btns.forEach(b => { b.disabled = true; });
-  let done = null, rerender = true;
-  const attachInput = f.querySelector('input[name=attach]'); delete o.attach;
-  try {
-    if (['note','evidence','ai','lesson','evbulk'].includes(kind)) { if (!o.subject) { toast('اختاري المقرر أولًا.'); return; } if (!(await ctxResolve(o))) return; }
-    if (kind === 'note') {
-      const ctx = f.dataset.ctx; const rec = base(Object.assign({context: ctx}, o));
-      if (!['observed','text','noticed','discussed'].some(k => rec[k])) { toast('اكتبي الملاحظة قبل الحفظ.'); return; }
-      rec.files = await uploadFiles(attachInput);
-      done = await create('notes', 'N', 4, rec); if (done) { toast(`حُفظت ${done} · ${rec.subject}${rec.className ? ' · الفصل ' + rec.className : ''}`); if (keep) { rerender = false; keepNote(f); } }
-    }
-    if (kind === 'evidence') {
-      o.studentCode = String(o.studentCode || '').toUpperCase().replace(/\s/g, '');
-      if (!/^S\d{3,4}$/.test(o.studentCode)) { toast('رمز الطالبة يكون مثل S014.'); return; }
-      INDICATORS.forEach(([k]) => { o[k] = o[k] === '' || o[k] == null ? null : Number(o[k]); });
-      if (INDICATORS.every(([k]) => o[k] == null)) { toast('أدخلي درجة واحدة على الأقل.'); return; }
-      o.files = await uploadFiles(attachInput);
-      done = await create('evidence', 'E', 4, base(o));
-      if (done) { toast('حُفظ الدليل ' + done + ' للطالبة ' + o.studentCode); if (keep) { rerender = false; ['studentCode','note'].forEach(n => { f[n].value = ''; }); INDICATORS.forEach(([k]) => { f[k].value = ''; }); f.studentCode.focus(); S.dirty = false; } }
-    }
-    if (kind === 'ai') {
-      if (!o.aiOutput && !o.teacherFinal) { toast('أضيفي مخرج الذكاء الاصطناعي أو النسخة المعتمدة.'); return; }
-      const d = o.aiOutput && o.teacherFinal ? diff(o.aiOutput, o.teacherFinal) : null;
-      const rec = base({stage: o.stage, scope: o.scope, evidenceRefs: o.evidenceRefs, decisionLink: o.decisionLink, mode: o.mode, tool: o.tool, subject: o.subject, grade: o.grade, classId: o.classId, className: o.className, studentCount: o.studentCount, lessonId: o.lessonId, lessonCode: o.lessonCode, lessonTitle: o.lessonTitle, baseLessonId: o.baseLessonId, date: o.date, cycleId: o.cycleId,
-        goal: o.goal, studentEvidence: o.studentEvidence, prompt: o.prompt, aiOutput: o.aiOutput, teacherFinal: o.teacherFinal, decision: o.decision || 'modified', reason: o.reason, modification: o.modification, practices: o.practices || [],
-        diffStats: d ? {sim: d.sim, kept: d.kept, added: d.added, removed: d.removed} : null, observedOutcome: '', reflection: ''});
-      const code = await create('ai', 'AI', 4, rec); done = code;
-      if (code && (o.asVersion || []).length && o.teacherFinal) {
-        const bl = lessonOf(o.baseLessonId) || lessonOf(o.lessonId);
-        const vid = await saveLessonVersion({baseLesson: bl ? bl.lessonId : '', lessonTitle: o.lessonTitle, subject: o.subject, grade: o.grade, classId: o.classId, className: o.className, studentCount: o.studentCount, cycleId: o.cycleId, date: o.date, changeNote: o.modification || (o.mode + ' بمساندة AI')}, {body: o.teacherFinal, aiRecord: code, source: 'ai-assisted'});
-        if (vid) await S.db.collection('ai').doc(code).update({appliedVersion: vid});
-        toast('حُفظ ' + code + (vid ? ' والنسخة ' + vid : ''));
-      } else if (code) toast('حُفظ ' + code);
-    }
-    if (kind === 'evbulk') { done = await saveBulk(f, o); }
-    if (kind === 'lib') {
-      if (!o.title) { toast('اكتبي العنوان.'); return; }
-      const rec = {category: o.category, type: o.type, title: o.title, authors: o.authors, year: o.year, publisher: o.publisher, link: o.link, apa: o.apa || apaOf(o), summary: o.summary, use: o.use, rqs: o.rqs || [], verified: (o.verified || []).length > 0, addedBy: myCode() || '—', createdAt: new Date().toISOString()};
-      rec.files = await uploadFiles(attachInput);
-      done = await create('library', 'R', 3, rec); if (done) toast('أُضيف إلى المكتبة: ' + o.title);
-    }
-    if (kind === 'ai-outcome') { await S.db.collection('ai').doc(f.dataset.id).update({observedOutcome: o.observedOutcome || '', reflection: o.reflection || '', decisionLink: o.decisionLink || ''}); toast('حُفظ الأثر.'); done = 1; }
-    if (kind === 'dec-outcome') { await S.db.collection('decisions').doc(f.dataset.id).update({outcome: o.outcome || ''}); toast('حُفظت النتيجة.'); done = 1; }
-    if (kind === 'lesson') { const id = await saveLessonVersion(o); if (id) toast('حُفظت ' + id); done = id; }
-    if (kind === 'meeting') { done = await create('meetings', 'M', 2, base(o)); if (done) toast('حُفظ الاجتماع ' + done + '. سجّلي قراراته ومهامه من التبويبين المجاورين.'); }
-    if (kind === 'decision') { done = await create('decisions', 'D', 4, base(Object.assign(o, {status: 'continued', outcome: ''}))); if (done) toast('حُفظ القرار ' + done); }
-    if (kind === 'task') { done = await create('tasks', 'K', 3, base(Object.assign(o, {phase: Number(o.phase) || null, status: 'open'}))); if (done) toast('أُضيفت المهمة ' + done); }
-    if (kind === 'practice') { const scores = {}; PRACTICES.forEach(([k]) => { if (o['p_' + k]) scores[k] = Number(o['p_' + k]); delete o['p_' + k]; }); done = await create('practice', 'TP', 3, base(Object.assign(o, {scores}))); if (done) toast('حُفظ القياس ' + done); }
-    if (kind === 'settings') { await S.db.doc('config/project').set(Object.assign({}, D.settings, o, {updatedAt: new Date().toISOString()})); toast('حُفظت الإعدادات.'); done = 1; }
-    if (kind === 'member') { const code = await nextCode('team', 'T', 2); await S.db.collection('team').doc(code).set({code, discipline: o.discipline, role: o.role, status: 'نشطة', joined: today(), userId: ''}); toast('أُضيفت ' + code); done = code; }
-    if (kind === 'class') { done = await create('classes', 'CL', 2, {name: o.name, count: Number(o.count) || null, subject: o.subject, grade: o.grade, teacher: o.teacher, classRole: o.classRole || 'intervention', createdAt: new Date().toISOString()}); if (done) toast('أُضيف الفصل ' + o.name); }
-    if (kind === 'cycle') { const par = o.cyMode === 'parallel'; const subs = par ? (o.cySubjects || []) : []; if (par && subs.length < 2) { toast('الدورة المتوازية تحتاج مادتين على الأقل.'); return; } done = await create('cycles', 'C', 2, {title: o.title, mode: par ? 'parallel' : 'single', subject: par ? '' : o.subject, subjects: subs, startDate: o.startDate, phase: 1, studyPhase: o.cyPhase || phase(), createdAt: new Date().toISOString()}); if (done) { await S.db.doc('config/project').set(Object.assign({}, D.settings, {currentCycle: done})); toast('أُنشئت الدورة ' + done + ' وأصبحت الدورة الحالية.'); } }
-  } catch (x) { handleDbErr(x); }
-  finally { btns.forEach(b => { b.disabled = false; }); }
-  if (done) { rememberCtx(o, kind); dropDraft(f); }
-  if (done && rerender) { S.dirty = false; if (document.activeElement) document.activeElement.blur(); const y = window.scrollY; render(); window.scrollTo(0, y); }
-});
-
-/* =========================================================
-   8. Downloads: reports and CSV
-   ========================================================= */
-async function reportDownload() {
-  if (!S.downloads) return; const r = REPORTS.find(x => x[0] === S.repType);
-  const css = 'body{font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;max-width:900px;margin:32px auto;padding:0 20px;color:#17292B;line-height:1.8}h2{font-size:26px;margin:0 0 6px}h3{font-size:18px;border-bottom:2px solid #DDEDEA;padding-bottom:4px;margin-top:24px}table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}th,td{border:1px solid #D6DED9;padding:6px 8px;text-align:right;vertical-align:top}th{background:#EBF0EC}.rmeta{display:flex;flex-wrap:wrap;gap:4px 16px;color:#4F6164;font-size:14px}.chip{padding:1px 8px;border-radius:999px;background:#EBF0EC;font-size:13px}dl{display:grid;grid-template-columns:170px 1fr;gap:4px 12px}dt{color:#4F6164}dd{margin:0}.muted,.tiny{color:#4F6164;font-size:13px}';
-  const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(r[1])}</title><style>${css}</style></head><body>${$('#repOut').innerHTML}</body></html>`;
-  try { await S.downloads.save({filename: r[1].replace(/\s+/g, '_') + '_' + today() + '.html', data: html}); toast('نُزّل التقرير.'); } catch (x) { toast(x && x.code === 'declined' ? 'أُلغي التنزيل.' : 'تعذّر التنزيل في هذا العرض.'); }
-}
-function csv(rows, cols) { const q = v => { const s = v == null ? '' : (Array.isArray(v) ? v.join('|') : String(v)); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }; return '﻿' + [cols.join(','), ...rows.map(r => cols.map(c => q(r[c])).join(','))].join('\r\n'); }
-function summaryOf(r) { return r.observed || r.text || r.noticed || r.discussed || r.decision || r.goal || r.changeNote || ''; }
-function buildDs(ds, ph, cy, sj) {
-  const keep = r => (r.studyPhase || 'Pilot') === ph && (!cy || r.cycleId === cy) && (!sj || !r.subject || r.subject === sj);
-  if (ds === 'Student_Evidence_Long') { const rows = []; D.evidence.filter(keep).forEach(e => INDICATORS.forEach(([k, l]) => { if (e[k] != null) rows.push({StudyPhase: e.studyPhase, EvidenceID: e.code, StudentID: e.studentCode, TeacherID: e.author, CycleID: e.cycleId, Subject: e.subject, ClassID: e.classId, ClassName: e.className, ClassSize: e.studentCount, ClassRole: (D.classes.find(x => x.code === e.classId) || {}).classRole || 'intervention', LessonID: e.lessonCode, LessonTitle: e.lessonTitle, TimePoint: e.timePoint, EvidenceType: e.evidenceType, Indicator: k, IndicatorAr: l, Score: e[k], SupportLevel: e.supportLevel, AIUse: e.aiUse, InstrumentVersion: e.instrument, Date: e.date}); })); return [rows, ['StudyPhase','EvidenceID','StudentID','TeacherID','CycleID','Subject','ClassID','ClassName','ClassSize','ClassRole','LessonID','LessonTitle','TimePoint','EvidenceType','Indicator','IndicatorAr','Score','SupportLevel','AIUse','InstrumentVersion','Date']]; }
-  if (ds === 'Teacher_Practice_Long') { const rows = []; D.practice.filter(keep).forEach(p => Object.entries(p.scores || {}).forEach(([k, v]) => rows.push({StudyPhase: p.studyPhase, PracticeID: p.code, TeacherID: p.teacher, Subject: (D.team.find(m => m.code === p.teacher) || {}).discipline, MeasurePoint: p.measurePoint, Indicator: k, IndicatorAr: PRACTICE_NAME[k], Score: v, RaterID: p.author, InstrumentVersion: p.instrument, Date: p.date}))); return [rows, ['StudyPhase','PracticeID','TeacherID','Subject','MeasurePoint','Indicator','IndicatorAr','Score','RaterID','InstrumentVersion','Date']]; }
-  if (ds === 'AI_Decision_Log') return [D.ai.filter(keep).map(a => ({StudyPhase: a.studyPhase, AIRecordID: a.code, CycleID: a.cycleId, TeacherID: a.author, Subject: a.subject, Date: a.date, ToolUsed: a.tool, Purpose: a.mode, ClassName: a.className, ClassSize: a.studentCount, LessonTitle: a.lessonTitle, Prompt: a.prompt, AIOutput: a.aiOutput, TeacherFinal: a.teacherFinal, Decision: a.decision, Reason: a.reason, ModificationMade: a.modification, RetainedPct: a.diffStats && a.diffStats.sim, WordsAdded: a.diffStats && a.diffStats.added, WordsRemoved: a.diffStats && a.diffStats.removed, Practices: a.practices, AppliedInLesson: a.appliedVersion, ObservedOutcome: a.observedOutcome, Reflection: a.reflection})), ['StudyPhase','AIRecordID','CycleID','TeacherID','Subject','Date','ToolUsed','Purpose','ClassName','ClassSize','LessonTitle','Prompt','AIOutput','TeacherFinal','Decision','Reason','ModificationMade','RetainedPct','WordsAdded','WordsRemoved','Practices','AppliedInLesson','ObservedOutcome','Reflection']];
-  if (ds === 'Notes_Qualitative') { const cols = ['StudyPhase','NoteID','Context','CycleID','MeetingID','TeacherID','Subject','Date','Time','ClassName','ClassSize','LessonTitle','Target','Moment','StudentLevel','Task','Observed','Stumble','PromptUsed','SupportType','Response','LearningEvidence','Kind','Text','Discussed','Proposal','Noticed','Learned','PracticeChanged','Evidence','Next','OpenQuestion','Practices']; return [D.notes.filter(keep).map(n => ({StudyPhase: n.studyPhase, NoteID: n.code, Context: n.context, CycleID: n.cycleId, MeetingID: n.meetingId, TeacherID: n.author, Subject: n.subject, Date: n.date, Time: n.time, ClassName: n.className, ClassSize: n.studentCount, LessonTitle: n.lessonTitle, Target: n.target, Moment: n.moment, StudentLevel: n.level, Task: n.task, Observed: n.observed, Stumble: n.stumble, PromptUsed: n.promptUsed, SupportType: n.supportType, Response: n.response, LearningEvidence: n.learningEvidence, Kind: n.kind, Text: n.text, Discussed: n.discussed, Proposal: n.proposal, Noticed: n.noticed, Learned: n.learned, PracticeChanged: n.change, Evidence: n.evidenceRef, Next: n.next, OpenQuestion: n.openQuestion, Practices: n.practices})), cols]; }
-  if (ds === 'Decisions_Log') return [D.decisions.filter(keep).map(d => ({StudyPhase: d.studyPhase, DecisionID: d.code, CycleID: d.cycleId, MeetingID: d.meetingId, Subject: d.subject, Date: d.date, Situation: d.situation, Evidence: d.evidence, Alternatives: d.alternatives, Decision: d.decision, Reason: d.reason, Action: d.action, Participants: d.participants, Outcome: d.outcome, Status: d.status})), ['StudyPhase','DecisionID','CycleID','MeetingID','Subject','Date','Situation','Evidence','Alternatives','Decision','Reason','Action','Participants','Outcome','Status']];
-  if (ds === 'Lesson_Versions') return [D.lessons.filter(keep).map(l => ({StudyPhase: l.studyPhase, LessonID: l.lessonId, Version: l.version, LessonVersionID: l._id, CycleID: l.cycleId, Subject: l.subject, Grade: l.grade, ClassName: l.className, ClassSize: l.studentCount, Title: l.title, Source: l.source || 'teacher', AIRecordID: l.aiRecord, DecisionID: l.decisionId, ChangeNote: l.changeNote, Date: l.date, Text: lessonText(l)})), ['StudyPhase','LessonID','Version','LessonVersionID','CycleID','Subject','Grade','ClassName','ClassSize','Title','Source','AIRecordID','DecisionID','ChangeNote','Date','Text']];
-  if (ds === 'Process_Timeline') { const ev = []; const add = (arr, type) => arr.filter(keep).forEach(r => ev.push({Date: dateOf(r), Type: typeof type === 'function' ? type(r) : type, RecordID: r.code || r._id, CycleID: r.cycleId, Subject: r.subject, TeacherID: r.author, Summary: summaryOf(r)})); add(D.notes, r => 'Note:' + r.context); add(D.ai, 'AI'); add(D.decisions, 'Decision'); add(D.meetings, 'Meeting'); add(D.lessons, 'LessonVersion'); add(D.evidence, 'Evidence'); ev.sort((a, b) => String(a.Date).localeCompare(String(b.Date))); return [ev, ['Date','Type','RecordID','CycleID','Subject','TeacherID','Summary']]; }
-  return [[], []];
-}
-async function exportDs(ds) {
-  if (!S.downloads) return; const ph = $('#exPhase').value, cy = $('#exCycle').value, sj = $('#exSubj').value;
-  const [rows, cols] = buildDs(ds, ph, cy, sj);
-  if (!rows.length) { toast('لا صفوف لهذا الملف بالمرشحات المختارة.'); return; }
-  const name = ds + '_' + ph + (cy ? '_' + cy : '') + '_' + today() + '.csv';
-  try { await S.downloads.save({filename: name, data: csv(rows, cols)}); await create('exports', 'X', 3, {dataset: name, filters: ph + ' · ' + (cy || 'كل الدورات') + ' · ' + (sj || 'كل المقررات'), rows: rows.length, deidentified: true, author: myCode() || '—', createdAt: new Date().toISOString()}); toast('صُدّر ' + rows.length + ' صفًا وسُجّل التصدير.'); }
-  catch (x) { toast(x && x.code === 'declined' ? 'أُلغي التنزيل.' : 'تعذّر التنزيل في هذا العرض.'); }
-}
-
-/* =========================================================
-   8b. UX layer: role-aware guidance, remembered context, quick entry,
-       drafts, whole-class evidence, live meeting mode, phone navigation
-   ========================================================= */
-const MEMBER_HIDE = new Set(['analysis', 'reports', 'research']);
-const QBAR = [['home', 'الآن', 'home'], ['rec', 'سجّلي', 'rec'], ['in', 'ملاحظة حصة', 'eye'], ['meetings', 'الاجتماع', 'meetings']];
-const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2); };
+const nowIso = () => new Date().toISOString();
+const nid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const fmtDate = s => { if (!s) return '—'; try { return new Date(String(s).length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', {day: 'numeric', month: 'short', year: 'numeric'}); } catch (e) { return s; } };
+const byNew = (a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
+const byOld = (a, b) => -byNew(a, b);
+const uniq = a => [...new Set(a)];
+const lines = s => String(s || '').split(/\n|،|,/).map(x => x.trim()).filter(Boolean);
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('burhan.' + k); return v ? JSON.parse(v) : d; } catch (x) { return d; } },
-  set(k, v) { try { localStorage.setItem('burhan.' + k, JSON.stringify(v)); } catch (x) {} },
-  del(k) { try { localStorage.removeItem('burhan.' + k); } catch (x) {} }
+  get(k, d) { try { const v = localStorage.getItem('burhan2.' + k); return v ? JSON.parse(v) : d; } catch (x) { return d; } },
+  set(k, v) { try { localStorage.setItem('burhan2.' + k, JSON.stringify(v)); } catch (x) {} }
 };
+function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => { t.hidden = true; }, 4200); }
+function opts(list, sel, blank) { return (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(sel ?? '') ? ' selected' : ''}>${esc(l)}</option>`; }).join(''); }
+const field = (label, inner, hint) => `<label class="f"><span>${esc(label)}</span>${hint ? `<span class="hint">${esc(hint)}</span>` : ''}${inner}</label>`;
+const inp = (name, val, attrs = '') => `<input name="${name}" value="${esc(val ?? '')}" ${attrs}>`;
+const area = (name, val, attrs = '') => `<textarea name="${name}" ${attrs}>${esc(val ?? '')}</textarea>`;
+const sel = (name, list, val, blank, attrs = '') => `<select name="${name}" ${attrs}>${opts(list, val, blank)}</select>`;
+const checks = (name, list, chosen) => { const s = new Set(chosen || []); return `<div class="checks">${list.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<label><input type="checkbox" name="${name}" value="${esc(v)}"${s.has(v) ? ' checked' : ''}>${esc(l)}</label>`; }).join('')}</div>`; };
+const help = (t, body) => `<details class="help"><summary>${esc(t)}</summary>${body}</details>`;
+const empty = t => `<div class="empty">${t}</div>`;
+const pill = (t, k) => `<span class="pill ${k || ''}">${esc(t)}</span>`;
+function formData(f) { const o = {}; $$('input,select,textarea', f).forEach(el => { if (!el.name || el.type === 'submit' || el.type === 'button') return; if (el.type === 'checkbox') { (o[el.name] = o[el.name] || []); if (el.checked) o[el.name].push(el.value); } else if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; } else o[el.name] = typeof el.value === 'string' ? el.value.trim() : el.value; }); return o; }
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+const sd = a => { if (a.length < 2) return null; const m = avg(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) * (x - m), 0) / (a.length - 1)); };
+const f2 = v => v == null || isNaN(v) ? '—' : (Math.round(v * 100) / 100).toString();
 
-/* ---- Navigation: fewer sections for team members, phone menu and bottom bar ---- */
+/* ---------- vocabulary ---------- */
+const ROLES = [['leader', 'قائد الفريق'], ['facilitator', 'الميسّر'], ['teacher', 'المعلم المنفّذ'], ['content', 'خبير المحتوى'], ['observer', 'الملاحِظ'], ['reviewer', 'المراجع'], ['researcher', 'الباحث']];
+const ROLE = Object.fromEntries(ROLES);
+const MANAGER_ROLES = ['leader', 'facilitator'];
+const STAGES = ['رياض الأطفال', 'الابتدائية', 'المتوسطة', 'الثانوية', 'الجامعية', 'التدريب المهني', 'أخرى'];
+const SUBJECT_HINTS = ['الرياضيات', 'العلوم', 'الكيمياء', 'الفيزياء', 'الأحياء', 'التقنية الرقمية', 'الحاسب', 'اللغة العربية', 'اللغة الإنجليزية', 'الدراسات الإسلامية', 'الدراسات الاجتماعية', 'الكفايات اللغوية', 'التفكير الناقد', 'المهارات الحياتية', 'التربية الفنية', 'التربية البدنية'];
+const MODULES = [
+  ['solo', 'تصنيف SOLO', 'تصميم المهام والأسئلة وتحليل استجابات المتعلمين وفق مستويات SOLO.'],
+  ['ai', 'مساعد الذكاء الاصطناعي', 'اقتراحات للمهام والأسئلة وبدائل التدريس وفحص اتساق الخطة. كل مقترح يراجعه الفريق قبل اعتماده.'],
+  ['research', 'البحث الأكاديمي', 'مساحة باحث مستقلة: منهج الدراسة والمجموعات والقياسات والموافقات. لا تظهر لبقية الفريق.'],
+  ['customObs', 'أدوات ملاحظة مخصصة', 'حقول إضافية في بطاقة الملاحظة يحددها الفريق لمادته.'],
+  ['pd', 'تقارير التطوير المهني', 'سجل مشاركة كل عضو في الاجتماعات والدروس والملاحظات، لتوثيق التطوير المهني.']];
+const MODULE = Object.fromEntries(MODULES.map(m => [m[0], m[1]]));
+const DEFAULT_INDICATORS = ['التفسير المفاهيمي', 'الاستدلال', 'المشاركة في النقاش', 'بناء الحجة', 'حل المشكلات', 'الكتابة', 'العمل العملي', 'التعاون'];
+const DECISION_STATUS = [['proposed', 'مقترح'], ['approved', 'معتمد'], ['done', 'نُفّذ']];
+const SOLO = [['0', 'ما قبل البنية', 'لا فكرة صحيحة، أو إجابة لا علاقة لها بالسؤال'], ['1', 'أحادي البنية', 'فكرة واحدة صحيحة دون ربط'], ['2', 'متعدد البنية', 'عدة أفكار صحيحة لكنها متفرقة'], ['3', 'علائقي', 'يربط الأفكار في تفسير متماسك يجيب عن «لماذا»'], ['4', 'تجريدي ممتد', 'يعمّم الفكرة أو ينقلها إلى موقف جديد لم يُشرح']];
+const soloName = l => l === '' || l == null ? '—' : (SOLO[Number(l)] ? SOLO[Number(l)][0] + ' · ' + SOLO[Number(l)][1] : '—');
+
+/* The general Lesson Study cycle. Each step says what it is for, where it happens, and when it counts as done. */
+const STEPS = [
+  {k: 'goal', n: 'تحديد الهدف البعيد', d: 'ما الذي نريد أن يصبح عليه المتعلمون على المدى البعيد؟ الأفكار الكبرى وعادات التفكير ومؤشرات النجاح.', go: 'settings', done: (P, c) => !!(P.goals && P.goals.longTerm)},
+  {k: 'problem', n: 'دراسة مشكلة التعلم', d: 'ما الذي يتعثر فيه المتعلمون، وما الدليل؟ من هم المتعلمون المستهدفون؟', go: 'settings', done: (P, c) => !!(P.problem && P.problem.statement)},
+  {k: 'content', n: 'دراسة المحتوى', d: 'دراسة الموضوع في المنهج: المفاهيم، والمتطلبات السابقة، والأخطاء الشائعة، وكيف تتدرج الفكرة.', go: 'schedule', done: (P, c) => !!(c && c.contentStudy)},
+  {k: 'plan', n: 'التخطيط التشاركي', d: 'الفريق يصمّم الدرس البحثي معًا: المهام والأسئلة والاستجابات المتوقعة وأدلة التعلم.', go: 'lessons', done: (P, c) => inCycle(D.lessons, c).some(l => (l.version || 1) === 1)},
+  {k: 'teach', n: 'تنفيذ الدرس وملاحظته', d: 'معلم ينفّذ، والبقية يلاحظون تعلّم المتعلمين: ما رأوه بالضبط، منفصلًا عن تفسيرهم.', go: 'obs', done: (P, c) => inCycle(D.observations, c).some(o => (o.lessonVersion || 1) === 1)},
+  {k: 'discuss', n: 'مناقشة أدلة التعلم', d: 'اجتماع يقرأ الأدلة ويستخلص الأنماط، ويخرج بقرارات تحسين مربوطة بالدليل.', go: 'improve', done: (P, c) => inCycle(D.decisions, c).length > 0},
+  {k: 'revise', n: 'مراجعة التصميم', d: 'نسخة جديدة من الدرس تُكتب فيها التعديلات وسببها، مربوطة بقرار التحسين.', go: 'lessons', done: (P, c) => inCycle(D.lessons, c).some(l => (l.version || 1) >= 2)},
+  {k: 'reteach', n: 'إعادة التدريس عند الحاجة', d: 'تدريس النسخة المعدّلة وملاحظتها بالطريقة نفسها. يمكن تخطيها إن قرر الفريق ذلك.', go: 'obs', optional: true, done: (P, c) => !!(c && c.skipReteach) || inCycle(D.observations, c).some(o => (o.lessonVersion || 1) >= 2)},
+  {k: 'reflect', n: 'التأمل والتوثيق', d: 'كل عضو يكتب ما تعلّمه، ويصدر تقرير الدورة.', go: 'improve', done: (P, c) => inCycle(D.reflections, c).length > 0}];
+
+/* ---------- state ---------- */
+const S = {view: store.get('view', 'dash'), pid: store.get('pid', ''), projects: [], invited: [], P: null, cycleId: store.get('cycle', ''), dirty: false, wiz: null, tab: {}, filters: {}, ready: false, invRoles: {}};
+const COLLS = ['members', 'invites', 'cycles', 'lessons', 'observations', 'meetings', 'decisions', 'reflections', 'ai', 'research'];
+const D = {}; COLLS.forEach(c => { D[c] = []; });
+let unsubProject = [];
+const inCycle = (arr, c) => c ? arr.filter(r => r.cycleId === c.id) : [];
+const mod = k => !!(S.P && S.P.modules && S.P.modules[k]);
+const isManager = () => !!(S.P && (S.P.managerUids || []).includes(ME.uid));
+const isResearcher = () => !!(S.P && (S.P.researcherUids || []).includes(ME.uid));
+const meMember = () => D.members.find(m => m.id === ME.uid);
+const memberName = uid => { const m = D.members.find(x => x.id === uid); return m ? (m.name || m.email) : (uid === ME.uid ? (ME.name || ME.email) : '—'); };
+const curCycle = () => D.cycles.find(c => c.id === S.cycleId) || D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).find(c => c.status !== 'closed') || D.cycles[0] || null;
+const cycleLabel = c => c ? `الدورة ${c.n || ''}${c.title ? ' · ' + c.title : ''}` : '—';
+const projSubjects = () => (S.P && S.P.subjects) || [];
+const stepState = c => STEPS.map(s => ({s, ok: !!(S.P && s.done(S.P, c))}));
+const nextStep = c => { const st = stepState(c); return st.find(x => !x.ok) || null; };
+
+/* ---------- data access ---------- */
+const pref = (pid = S.pid) => db.collection('projects').doc(pid);
+const coll = c => pref().collection(c);
+function dbErr(x) {
+  const c = x && x.code;
+  if (c === 'permission-denied') toast('ليست لديك صلاحية لهذا الإجراء في هذا المشروع.');
+  else toast('تعذّر الحفظ مؤقتًا. حاول مرة أخرى.');
+  console.warn(x);
+}
+async function addDoc(c, data, id) {
+  id = id || nid(c.slice(0, 2));
+  try { await coll(c).doc(id).set(Object.assign({createdBy: ME.uid, createdAt: nowIso()}, data)); return id; }
+  catch (x) { dbErr(x); return null; }
+}
+async function updDoc(c, id, data) { try { await coll(c).doc(id).set(Object.assign({updatedAt: nowIso(), updatedBy: ME.uid}, data), {merge: true}); return true; } catch (x) { dbErr(x); return false; } }
+async function delDoc(c, id) { try { await coll(c).doc(id).delete(); return true; } catch (x) { dbErr(x); return false; } }
+async function updProject(data, pid = S.pid) { try { await pref(pid).set(Object.assign({updatedAt: nowIso()}, data), {merge: true}); return true; } catch (x) { dbErr(x); return false; } }
+const snapList = snap => snap.docs.map(d => Object.assign({id: d.id}, d.data()));
+
+function watchProjects() {
+  db.collection('projects').where('memberUids', 'array-contains', ME.uid).onSnapshot(s => {
+    S.projects = snapList(s).sort(byNew);
+    if (!S.pid || !S.projects.some(p => p.id === S.pid)) { if (!S.creating) selectProject(S.projects[0] ? S.projects[0].id : ''); return; }
+    S.P = S.projects.find(p => p.id === S.pid);
+    if (S.subKey !== subKeyOf(S.P)) selectProject(S.pid); else schedule();
+  }, x => console.warn(x));
+  db.collection('projects').where('invitedEmails', 'array-contains', ME.email).onSnapshot(s => { S.invited = snapList(s); schedule(); }, x => console.warn(x));
+}
+const subKeyOf = P => P ? [P.id, (P.managerUids || []).includes(ME.uid), (P.researcherUids || []).includes(ME.uid)].join('|') : '';
+function selectProject(pid) {
+  unsubProject.forEach(u => { try { u(); } catch (x) {} }); unsubProject = [];
+  COLLS.forEach(c => { D[c] = []; });
+  S.pid = pid; store.set('pid', pid); S.P = S.projects.find(p => p.id === pid) || null; S.subKey = subKeyOf(S.P);
+  if (!pid) { schedule(); return; }
+  const P = S.P || {};
+  COLLS.forEach(c => {
+    if (c === 'research' && !(P.researcherUids || []).includes(ME.uid)) return;
+    if (c === 'invites' && !(P.managerUids || []).includes(ME.uid)) return;
+    unsubProject.push(coll(c).onSnapshot(s => { D[c] = snapList(s); schedule(); }, x => console.warn(c, x)));
+  });
+  schedule();
+}
+let rq = 0;
+function schedule() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; if (S.dirty) { $('#view').dataset.stale = '1'; renderNav(); return; } render(); }); }
+
+/* ---------- icons and navigation ---------- */
+const ICONS = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>', folder: '<path d="M3 7h6l2 2h10v10H3z"/>', users: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 19c0-3 2.5-5 5-5s5 2 5 5M11 19c0-3 2.5-5 5-5s5 2 5 5"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>', book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', refl: '<path d="M4 4h16v12H8l-4 4z"/>', chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  solo: '<path d="M4 20h16M6 16v-3M10 16V9M14 16v-5M18 16V5"/>', ai: '<path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>', lab: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 2.6a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 2.6h5l.3-2.6a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1z"/>',
+  lib: '<path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 2.5 15-3.5 1z"/>'};
+const icon = k => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ''}</svg>`;
+function navItems() {
+  const g = [['المنصة', [['dash', 'لوحة التحكم', 'home'], ['projects', 'مشاريعي', 'folder']]]];
+  if (S.P) {
+    g.push(['المشروع', [['team', 'الفرق', 'users'], ['schedule', 'الجدول التنفيذي', 'calendar'], ['lessons', 'الدروس البحثية', 'book'], ['obs', 'الملاحظة والأدلة', 'eye'], ['improve', 'التحسين والتأمل', 'refl'], ['reports', 'التقارير والتحليلات', 'chart']]]);
+    const m = [];
+    if (mod('solo')) m.push(['solo', 'تصنيف SOLO', 'solo']);
+    if (mod('ai')) m.push(['ai', 'مساعد الذكاء الاصطناعي', 'ai']);
+    if (mod('research') && isResearcher()) m.push(['research', 'مساحة الباحث', 'lab']);
+    if (m.length) g.push(['الوحدات المفعّلة', m]);
+    g.push(['الإدارة', [['frameworks', 'مكتبة الأطر', 'lib']].concat(isManager() ? [['settings', 'إعدادات المشروع', 'gear']] : [])]);
+  } else g[0][1].push(['frameworks', 'مكتبة الأطر', 'lib']);
+  return g;
+}
 function renderNav() {
-  renderNavBase();
-  if (window.burhanSignOut && !$('#who .signout')) $('#who').insertAdjacentHTML('beforeend', '<br><button class="signout" type="button" onclick="burhanSignOut()">تسجيل الخروج</button>');
-  if (!isResearch()) $$('#nav .nav').forEach(b => { if (MEMBER_HIDE.has(b.dataset.view) && b.dataset.view !== S.view) b.hidden = true; });
-  $$('#nav .navgroup').forEach(g => { let n = g.nextElementSibling, any = false; while (n && !n.classList.contains('navgroup')) { if (!n.hidden) any = true; n = n.nextElementSibling; } g.hidden = !any; });
-  const qb = $('#qbar');
-  if (qb) qb.innerHTML = QBAR.map(([k, l, ic]) => { const on = k === 'in' ? (S.view === 'rec' && S.recType === 'in') : (S.view === k && !(k === 'rec' && S.recType === 'in')); return `<button type="button" data-act="${k === 'in' || k === 'rec' ? 'go-rec' : 'nav'}" data-view="${k}" data-t="${k === 'in' ? 'in' : ''}"${on ? ' aria-current="page"' : ''}>${icon(ic)}<span>${l}</span></button>`; }).join('') + `<button type="button" data-act="menu">${icon('playbook')}<span>المزيد</span></button>`;
+  const items = navItems(); const keys = items.flatMap(g => g[1].map(i => i[0]));
+  if (!keys.includes(S.view)) S.view = 'dash';
+  $('#nav').innerHTML = items.map(([g, list]) => `<div class="navgroup">${esc(g)}</div>` + list.map(([k, l, ic]) => `<button class="nav" data-act="go" data-v="${k}"${k === S.view ? ' aria-current="page"' : ''}>${icon(ic)}<span>${esc(l)}</span></button>`).join('')).join('');
+  $('#projbox').innerHTML = S.projects.length ? `المشروع الحالي<select id="projSel" aria-label="المشروع الحالي">${opts(S.projects.map(p => [p.id, p.name]), S.pid)}</select>` : 'لا مشاريع بعد';
+  const m = meMember();
+  $('#who').innerHTML = `<b>${esc(ME.name || (m && m.name) || ME.email)}</b><br>${S.P ? esc((m && (m.roles || []).map(r => ROLE[r]).join('، ')) || '') : ''}<br><button data-act="signout">تسجيل الخروج</button>`;
+  const qb = [['dash', 'الرئيسة', 'home'], ['obs', 'ملاحظة', 'eye'], ['lessons', 'الدروس', 'book'], ['improve', 'التحسين', 'refl']].filter(x => keys.includes(x[0]));
+  $('#qbar').innerHTML = qb.map(([k, l, ic]) => `<button type="button" data-act="go" data-v="${k}"${k === S.view ? ' aria-current="page"' : ''}>${icon(ic)}<span>${l}</span></button>`).join('') + `<button type="button" data-act="menu">${icon('folder')}<span>المزيد</span></button>`;
 }
+const V = {};
+function render() {
+  renderNav();
+  const v = $('#view'); delete v.dataset.stale;
+  try { v.innerHTML = (V[S.view] || V.dash)(); } catch (x) { console.error(x); v.innerHTML = empty('حدث خطأ في عرض هذه الصفحة: ' + esc(x.message)); }
+  S.dirty = false;
+  if (typeof afterRender === 'function') afterRender();
+}
+function go(v) { S.view = v; store.set('view', v); S.dirty = false; render(); window.scrollTo(0, 0); const r = $('.rail'); if (r) r.classList.remove('open'); }
+const needProject = () => S.P ? '' : `<section class="panel">${empty('اختر مشروعًا أو أنشئ مشروعًا جديدًا أولًا. <button class="btn small" data-act="go" data-v="projects">مشاريعي</button>')}</section>`;
+const head = (t, lede) => `<div><h1>${esc(t)}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}</div>`;
+const tabs = (key, list) => { const cur = S.tab[key] || list[0][0]; return `<div class="tabs" role="tablist">${list.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === cur}" data-act="tab" data-k="${key}" data-v="${k}">${esc(l)}</button>`).join('')}</div>`; };
+const curTab = (key, def) => S.tab[key] || def;
+const cycleSelect = (name = 'cycleId', val) => sel(name, D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).map(c => [c.id, cycleLabel(c)]), val || (curCycle() || {}).id, D.cycles.length ? undefined : 'لا دورات بعد');
 
-/* ---- Remembered context: subject, class, lesson, cycle ---- */
-function memCtx() {
-  const m = store.get('ctx', {});
-  if (!m.subject && mySubject()) m.subject = mySubject();
-  if (!m.classId) { const cl = D.classes.find(c => c.teacher === myCode() && (!m.subject || c.subject === m.subject)); if (cl) m.classId = cl.code; }
-  if (m.classId && !D.classes.find(c => c.code === m.classId)) delete m.classId;
-  if (m.cycleId && !D.cycles.find(c => c.code === m.cycleId)) delete m.cycleId;
-  return m;
-}
-function rememberCtx(o, kind) {
-  if (!['note', 'evidence', 'ai', 'lesson', 'evbulk'].includes(kind) || !o || !o.subject) return;
-  store.set('ctx', {subject: o.subject, classId: o.classId || '', lessonTitle: o.lessonTitle || '', cycleId: o.cycleId || ''});
-}
-function ctxBlock(n, pre = {}) {
-  const m = memCtx(); const p = Object.assign({}, pre);
-  const fresh = !pre.subject && !pre.classId;
-  if (fresh) ['subject', 'classId', 'lessonTitle', 'cycleId'].forEach(k => { if (!p[k] && m[k]) p[k] = m[k]; });
-  const full = ctxBlockFull(n, p);
-  const cl = D.classes.find(c => c.code === p.classId && c.subject === p.subject);
-  if (!fresh || !cl) return full;
-  const cy = D.cycles.find(c => c.code === (p.cycleId || (curCycle() || {}).code));
-  return `<section class="stepsec" data-ctxwrap>${stepHead(n, 'السياق', 'محفوظ من آخر تسجيل لكِ. إن تغيّر الفصل أو الدرس اضغطي «تغيير».')}
-  <div class="ctxbar" data-ctxbar>${subjChip(p.subject)}<span>الفصل <b>${esc(cl.name)}</b> · ${esc(cl.count || '؟')} طالبة</span>${p.lessonTitle ? `<span class="sep">|</span><span>الدرس: <b>${esc(p.lessonTitle)}</b></span>` : '<span class="sep">|</span><span class="muted">بلا اسم درس</span>'}${cy ? `<span class="sep">|</span><span>${esc(cy.code)}</span>` : ''}<span class="sep">|</span><span>${esc(fmtDate(today()))}</span><button type="button" class="btn ghost small" data-act="ctx-open">تغيير</button></div>
-  <div data-ctxfull hidden>${full}</div></section>`;
-}
+/* ---------- event plumbing: views register handlers ---------- */
+const ACT = {}; const FORM = {};
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'go') { go(b.dataset.v); return; }
+  if (a === 'tab') { S.tab[b.dataset.k] = b.dataset.v; render(); return; }
+  if (a === 'menu') { const r = $('.rail'); r.classList.toggle('open'); window.scrollTo(0, 0); return; }
+  if (a === 'signout') { B.auth.signOut(); return; }
+  if (ACT[a]) { e.preventDefault(); try { await ACT[a](b, e); } catch (x) { console.error(x); toast('تعذّر تنفيذ الإجراء.'); } }
+});
+document.addEventListener('submit', async e => {
+  const f = e.target.closest('form[data-form]'); if (!f || !FORM[f.dataset.form]) return; e.preventDefault();
+  const btn = f.querySelector('button[type=submit]'); if (btn) btn.disabled = true;
+  try { const ok = await FORM[f.dataset.form](formData(f), f); if (ok !== false) { S.dirty = false; render(); } }
+  catch (x) { console.error(x); toast('تعذّر الحفظ.'); }
+  finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
+});
+document.addEventListener('input', e => { if (e.target.closest('form')) S.dirty = true; });
+document.addEventListener('change', e => {
+  if (e.target.id === 'projSel') { selectProject(e.target.value); S.view = 'dash'; render(); return; }
+  if (e.target.closest('form')) S.dirty = true;
+  const h = e.target.dataset && e.target.dataset.change; if (h && ACT[h]) ACT[h](e.target, e);
+});
+/* while someone is typing, team updates wait; they appear after saving or on the next page change */
 
-/* ---- In-class quick observation ---- */
-const MOMENTS = ['فهمت وفسّرت', 'تعثّرت', 'احتاجت دعمًا', 'نقلت التعلّم', 'سؤال أو فكرة لافتة'];
-const SUPPORTS = ['بلا دعم', 'تلميح لفظي', 'بطاقة دعم مكتوبة', 'مثال محلول جزئيًا', 'دعم الأقران', 'أداة رقمية'];
-const chipRadios = (name, list, sel) => `<div class="chips" role="radiogroup">${list.map(v => { const [val, lab] = Array.isArray(v) ? v : [v, v]; return `<label><input type="radio" name="${name}" value="${esc(val)}"${val === sel ? ' checked' : ''}>${esc(lab)}</label>`; }).join('')}</div>`;
-function recentTargets() {
-  const m = memCtx(); const seen = [];
-  D.notes.filter(n => n.context === 'in' && n.target && (!m.classId || n.classId === m.classId)).sort(byNewest).forEach(n => { const t = String(n.target).trim(); if (t && !seen.includes(t) && seen.length < 8) seen.push(t); });
-  return seen;
+/* =========================================================
+   Dashboard, projects and the 7-step project wizard
+   ========================================================= */
+function stepChips(c) {
+  const st = stepState(c); const nx = st.findIndex(x => !x.ok);
+  return `<div class="steps" aria-label="خطوات الدورة">${st.map((x, i) => `<span class="step ${x.ok ? 'done' : (i === nx ? 'now' : '')}" title="${esc(x.s.d)}"><i>${i + 1}</i>${esc(x.s.n)}${x.s.optional ? ' (اختياري)' : ''}</span>`).join('')}</div>`;
 }
-function inBody() {
-  const rec = recentTargets(); const groups = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6'];
-  return `<section class="stepsec">${stepHead(2, 'ماذا لاحظتِ؟', 'ثلاثة أشياء فقط: من؟ ماذا حدث؟ أي دعم؟ اكتبي ما رأيتِه كما حدث، عن الطالبة لا عن المعلمة.')}
-  <div class="row between"><span class="small muted">بعد الحفظ يبقى الفصل والدرس كما هما، وتُفرَّغ الملاحظة لتكتبي التالية.</span><span class="counter" id="inCount"${S.inCount ? '' : ' hidden'}>${S.inCount || 0} ملاحظة في هذه الحصة</span></div>
-  ${field('الطالبة أو المجموعة', inp('target', '', 'required placeholder="S014 أو G2" autocomplete="off" inputmode="latin" style="max-width:260px"'), 'رمز فقط، بلا اسم. أو اضغطي اختصارًا:')}
-  <div class="chips">${groups.concat(rec.filter(r => !groups.includes(r))).map(g => `<button type="button" class="c" data-act="fill" data-name="target" data-v="${esc(g)}">${esc(g)}</button>`).join('')}</div>
-  <div><div class="hint" style="margin-bottom:6px">ما نوع اللحظة؟</div>${chipRadios('moment', MOMENTS, '')}</div>
-  ${field('ماذا قالت أو فعلت؟', area('observed', '', 'required rows="3" placeholder="اكتبي الكلام أو الفعل كما حدث"'))}
-  <div data-example></div>
-  <div><div class="hint" style="margin-bottom:6px">الدعم المقدَّم</div>${chipRadios('supportType', SUPPORTS, 'بلا دعم')}</div>
-  <div><div class="hint" style="margin-bottom:6px">مستواها في خط الأساس <span class="opt">(اختياري، يساعد على معرفة هل الدعم المصمَّم لمستواها نجح)</span></div>${chipRadios('level', [['أ', 'أ · تحتاج دعمًا'], ['ب', 'ب · متوسطة'], ['ج', 'ج · متقدمة']], '')}</div>
-  <details class="more"><summary>تفاصيل أكثر (اختياري): الوقت، المهمة، التعثّر، الاستجابة</summary>
-    <div class="grid">${field('الوقت', inp('time', nowTime(), 'type="time"'))}${field('المهمة', inp('task', '', 'placeholder="مثال: مهمة النقل 2"'))}</div>
-    <div class="grid wide">${field('أين تعثّرت؟', area('stumble', '', 'placeholder="اتركيه فارغًا إن لم يحدث تعثّر"'))}${field('ما التلميح أو الدعم بالضبط؟', area('promptUsed', '', 'placeholder="مثال: ماذا يحدث للسرعة كل ثانية؟"'))}${field('كيف استجابت بعد الدعم؟', area('response'))}${field('ما الدليل على أنها تعلّمت؟', area('learningEvidence', '', 'placeholder="مثال: فسّرت المنحنى الجديد دون مساعدة"'))}</div>
-  </details></section>`;
-}
-const practiceOpt = n => `<details class="more"><summary>الممارسات المهنية التي ظهرت (اختياري)</summary><p class="small muted">نتتبّع بها نمو الممارسة عبر الدورات. اختاري ما ينطبق فقط.</p>${checks('practices', PRACTICES, [])}</details>`;
-function noteButtons(t) {
-  const who = `<span class="small muted">يُحفظ برمزك ${esc(myCode() || '— اربطي حسابك من الصفحة الرئيسة')} · ${esc(phase())}</span>`;
-  if (t === 'in' || t === 'out') return `<div class="row"><button class="btn bigbtn" type="submit" data-keep="1">حفظ وتسجيل ${t === 'in' ? 'ملاحظة' : 'تدوين'} أخرى</button><button class="btn ghost" type="submit">حفظ وإنهاء</button>${who}</div>`;
-  return `<div class="row"><button class="btn bigbtn" type="submit">حفظ</button>${who}</div>`;
-}
-function keepNote(f) {
-  ['target', 'observed', 'stumble', 'promptUsed', 'response', 'learningEvidence', 'task', 'text', 'evidenceRef'].forEach(n => { if (f[n]) f[n].value = ''; });
-  $$('input[name=moment],input[name=level]', f).forEach(r => { r.checked = false; });
-  const sp = f.querySelector('input[name=supportType][value="بلا دعم"]'); if (sp) sp.checked = true;
-  if (f.time) f.time.value = nowTime();
-  S.inCount = (S.inCount || 0) + 1; const c = $('#inCount'); if (c) { c.hidden = false; c.textContent = S.inCount + (f.dataset.ctx === 'in' ? ' ملاحظة في هذه الحصة' : ' تدوين في هذه الجلسة'); }
-  dropDraft(f); S.dirty = false;
-  const first = f.target || f.text; if (first) first.focus();
-}
-
-/* ---- Drafts: nothing typed is lost ---- */
-const DRAFT_SKIP = new Set(['dec-outcome', 'ai-outcome', 'settings', 'member', 'class', 'cycle']);
-const draftKey = f => f && f.dataset.form && !DRAFT_SKIP.has(f.dataset.form) ? 'draft.' + f.dataset.form + (f.dataset.ctx || '') : null;
-function readForm(f) { const o = {}; $$('input,select,textarea', f).forEach(el => { if (!el.name || el.type === 'file' || el.type === 'submit') return; if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; } else if (el.type === 'checkbox') { (o[el.name] = o[el.name] || []); if (el.checked) o[el.name].push(el.value); } else o[el.name] = el.value; }); return o; }
-let draftT = 0;
-function saveDraft(f) { const k = draftKey(f); if (!k) return; clearTimeout(draftT); draftT = setTimeout(() => store.set(k, {t: nowTime(), d: today(), v: readForm(f)}), 400); }
-function dropDraft(f) { const k = draftKey(f); if (k) { clearTimeout(draftT); store.del(k); } const bar = f && f.querySelector('[data-draftbar]'); if (bar) bar.remove(); }
-function restoreDraft(f) {
-  const k = draftKey(f); const dr = k && store.get(k); if (!dr) return;
-  const w = f.querySelector('[data-ctxwrap]'); if (w) { const full = w.querySelector('[data-ctxfull]'); const bar = w.querySelector('[data-ctxbar]'); if (full) full.hidden = false; if (bar) bar.hidden = true; }
-  if (dr.v.subject) { const r = f.querySelector(`input[name=subject][value="${CSS.escape(dr.v.subject)}"]`); if (r) r.checked = true; const sel = f.querySelector('[data-classfor]'); if (sel) sel.innerHTML = classOptions(dr.v.subject, dr.v.classId); }
-  Object.entries(dr.v).forEach(([n, v]) => { $$(`[name="${CSS.escape(n)}"]`, f).forEach(el => { if (el.type === 'radio') el.checked = el.value === v; else if (el.type === 'checkbox') el.checked = Array.isArray(v) && v.includes(el.value); else el.value = v; }); });
-  $$('form [data-classfor]').forEach(sel => toggleNewClass(sel));
-  const det = f.querySelector('details.more'); if (det && ['stumble', 'promptUsed', 'response', 'learningEvidence', 'task'].some(n => dr.v[n])) det.open = true;
-  S.dirty = true; if (f.id === 'aiForm') updateAiDiff();
-}
-function draftBars() {
-  $$('#view form[data-form]').forEach(f => {
-    const k = draftKey(f); const dr = k && store.get(k);
-    if (!dr || !Object.values(dr.v).some(v => Array.isArray(v) ? v.length : String(v || '').trim() && !/^(\d{4}-\d{2}-\d{2}|\d{2}:\d{2}|بلا دعم|C\d+)$/.test(v))) return;
-    if (f.querySelector('[data-draftbar]')) return;
-    f.insertAdjacentHTML('afterbegin', `<div class="draftbar" data-draftbar>لديكِ مسودة غير محفوظة (${esc(dr.d === today() ? 'اليوم' : fmtDate(dr.d))} ${esc(dr.t)})<button type="button" class="btn small" data-act="draft-restore">استعادتها</button><button type="button" class="btn ghost small" data-act="draft-drop">تجاهلها</button></div>`);
-  });
-}
-
-/* ---- Whole-class evidence entry ---- */
-const evTabs = () => `<div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="${S.evMode !== 'class'}" data-act="ev-mode" data-m="one">طالبة واحدة</button><button class="tab" role="tab" aria-selected="${S.evMode === 'class'}" data-act="ev-mode" data-m="class">الفصل كاملًا (جدول)</button></div>`;
-function bulkCodes() {
-  if (S.bulkCodes && S.bulkCodes.length) return S.bulkCodes;
-  const m = memCtx(); const cl = D.classes.find(c => c.code === m.classId);
-  const known = [...new Set(D.evidence.filter(e => cl && e.classId === cl.code).map(e => e.studentCode))].sort();
-  if (known.length) return known;
-  const used = D.evidence.map(e => parseInt(String(e.studentCode || '').replace(/\D/g, ''), 10)).filter(n => n > 0); const start = used.length ? Math.max(...used) + 1 : 1;
-  return Array.from({length: Math.min(60, Number(cl && cl.count) || 25)}, (_, i) => 'S' + pad(start + i, 3));
-}
-function evidenceBulk() {
-  const codes = bulkCodes(); const tp = store.get('lastTP', 'Baseline');
-  const sc = (code, k) => `<input name="b_${code}_${k}" inputmode="numeric" maxlength="1" autocomplete="off" aria-label="${esc(code)} ${esc(indName(k))}" data-score>`;
-  return `<div class="row"><button class="btn ghost small" data-act="go-rec" data-t="">→ كل أنواع التسجيل</button></div>
-  <div><h1>دليل تعلّم: الفصل كاملًا</h1><p class="lede">أدخلي درجات فصلك في جدول واحد بعد تصحيح المهمة. صف لكل طالبة، ودرجة من 0 إلى 4 لكل مؤشر. اتركي خانة فارغة إن لم يُقَس المؤشر، وصف الطالبة الغائبة فارغًا كله.</p></div>
-  ${evTabs()}
-  <form class="panel" data-form="evbulk">${ctxBlock(1)}
-    <section class="stepsec">${stepHead(2, 'القياس', 'يُطبَّق على كل صفوف الجدول.')}
-      <div><div class="hint" style="margin-bottom:6px">نقطة القياس</div>${chipRadios('timePoint', TIMEPOINTS, tp)}</div>
-      <div class="grid">${field('نوع الدليل', `<select name="evidenceType" id="f-evidenceType">${opts(['بطاقة خروج', 'منتج طالبة', 'إجابة شفهية', 'مهمة نقل', 'مهمة خط أساس/بعدية'], store.get('lastEvType', ''))}</select>`)}${field('الأداة وإصدارها', `<select name="instrument" id="f-instrument">${opts(D.instruments.map(i => [i.code + '-' + i.version, i.code + ' ' + i.name + ' ' + i.version]), 'INS02-v0.1')}</select>`)}</div></section>
-    <section class="stepsec">${stepHead(3, 'الدرجات', 'اكتبي رقمًا ثم Enter للانتقال للخانة التالية. الخانة الحمراء ليست بين 0 و4.')}
-      <div class="row small"><span class="muted">رموز الطالبات:</span>من <input id="bFrom" value="${esc(codes[0] || 'S001')}" style="width:90px;min-height:38px" aria-label="من رمز"> إلى <input id="bTo" value="${esc(codes[codes.length - 1] || 'S025')}" style="width:90px;min-height:38px" aria-label="إلى رمز"><button type="button" class="btn ghost small" data-act="bulk-rows">تحديث الصفوف</button><span class="muted">${codes.length} طالبة</span></div><p class="tiny muted">الرموز ثابتة لكل طالبة طوال الدراسة، ومأخوذة من ملف الربط الذي تحتفظ به القائدة خارج المنصة. لا تكرري رموز فصل آخر.</p>
-      ${help('مقياس 0–4: تذكير سريع', `<ul><li><b>0</b> لا يظهر · <b>1</b> بداية · <b>2</b> جزئي أو بدعم كبير · <b>3</b> واضح مع نقص بسيط · <b>4</b> متمكّن مستقل ومبرَّر</li></ul>`)}
-      <div class="scroll"><table class="bulk"><thead><tr><th>الطالبة</th>${INDICATORS.map(([k, l]) => `<th>${esc(l)}</th>`).join('')}<th>الدعم الذي احتاجته</th></tr></thead><tbody>${codes.map(c => `<tr data-row="${esc(c)}"><td>${esc(c)}</td>${INDICATORS.map(([k]) => `<td>${sc(c, k)}</td>`).join('')}<td><select name="b_${esc(c)}_support" aria-label="دعم ${esc(c)}" style="min-height:40px">${opts(['بلا دعم', 'دعم 1: تلميح', 'دعم 2: بطاقة موجّهة', 'دعم 3: مثال محلول'])}</select></td></tr>`).join('')}</tbody></table></div>
-    </section>
-    <div class="row"><button class="btn bigbtn" type="submit" id="bulkSave">حفظ درجات الفصل</button><span class="small muted" id="bulkInfo">لم تُدخل درجات بعد.</span></div></form>`;
-}
-function bulkInfo() {
-  const f = $('form[data-form=evbulk]'); if (!f) return; let n = 0, bad = 0;
-  $$('tr[data-row]', f).forEach(tr => { const ins = $$('input[data-score]', tr); const any = ins.some(i => i.value !== ''); tr.classList.toggle('filled', any); if (any) n++; ins.forEach(i => { const ok = i.value === '' || /^[0-4]$/.test(i.value); i.classList.toggle('bad', !ok); if (!ok) bad++; }); });
-  $('#bulkInfo').textContent = bad ? `${bad} خانة غير صحيحة (المسموح 0 إلى 4).` : (n ? `جاهز لحفظ ${n} طالبة.` : 'لم تُدخل درجات بعد.');
-  $('#bulkSave').textContent = n ? `حفظ درجات ${n} طالبة` : 'حفظ درجات الفصل';
-}
-async function createMany(coll, prefix, width, list) {
-  if (!S.db || !list.length) return [];
-  const first = await nextCode(coll, prefix, width); let n = parseInt(first.slice(prefix.length), 10) || 1; const out = [];
-  for (const data of list) {
-    let code = prefix + pad(n, width);
-    for (let i = 0; i < 20; i++) { const snap = await S.db.collection(coll).doc(code).get(); if (!snap.exists) break; n++; code = prefix + pad(n, width); }
-    await S.db.collection(coll).doc(code).set(Object.assign({code}, data)); out.push(code); n++;
-  }
-  return out;
-}
-async function saveBulk(f, o) {
-  const rows = []; let bad = 0;
-  $$('tr[data-row]', f).forEach(tr => {
-    const code = tr.dataset.row; const r = {studentCode: code}; let any = false;
-    INDICATORS.forEach(([k]) => { const v = (o['b_' + code + '_' + k] || '').trim(); if (v === '') r[k] = null; else if (/^[0-4]$/.test(v)) { r[k] = Number(v); any = true; } else bad++; });
-    r.supportLevel = o['b_' + code + '_support'] || 'بلا دعم';
-    if (any) rows.push(r);
-  });
-  if (bad) { toast('صحّحي الخانات الحمراء أولًا: الدرجة من 0 إلى 4.'); return null; }
-  if (!rows.length) { toast('لا درجات للحفظ بعد.'); return null; }
-  const common = {subject: o.subject, classId: o.classId, className: o.className, studentCount: o.studentCount, lessonId: o.lessonId, lessonCode: o.lessonCode, lessonTitle: o.lessonTitle, cycleId: o.cycleId, date: o.date, timePoint: o.timePoint || 'Baseline', evidenceType: o.evidenceType, instrument: o.instrument, aiUse: 'لا', note: '', files: [], entry: 'class-table'};
-  store.set('lastTP', common.timePoint); store.set('lastEvType', common.evidenceType || '');
-  try {
-    const codes = await createMany('evidence', 'E', 4, rows.map(r => base(Object.assign({}, common, r))));
-    toast(`حُفظت درجات ${codes.length} طالبة (${codes[0]}–${codes[codes.length - 1]}) · ${tpName(common.timePoint)}`);
-    S.bulkCodes = null; return codes.length;
-  } catch (x) { handleDbErr(x); return null; }
-}
-
-/* ---- Home: who am I, where are we, what is my next step ---- */
-function linkChooser() {
-  if (myMember() || !S.db) return '';
-  const free = D.team.filter(m => !m.userId).sort((a, b) => a.code.localeCompare(b.code));
-  return `<section class="panel hero"><span class="kicker">خطوة واحدة قبل البدء</span><h2>من أنتِ في الفريق؟</h2><p class="lede small">اضغطي رمزك مرة واحدة. بعدها يُحفظ كل ما تسجّلينه برمزك لا باسمك، وتظهر لكِ مهامك وفصولك.</p>
-  <div class="chips">${free.map(m => `<button type="button" class="c" data-act="link" data-id="${esc(m._id)}">أنا ${esc(m.code)} · ${esc(m.discipline || '')}</button>`).join('') || '<span class="muted small">كل الرموز مرتبطة. اطلبي من قائدة المشروع إضافة رمز لكِ.</span>'}</div></section>`;
-}
-function cycleStrip(c) {
-  const cur = (phaseIdx(c) + 1);
-  return `<div class="strip" aria-hidden="true">${phasesOf(c).map((p, i) => `<span class="${i + 1 < cur ? 'd' : (i + 1 === cur ? 'n' : '')}" title="${esc((i + 1) + ' · ' + p.n)}"></span>`).join('')}</div>`;
-}
-const actBtn = ([l, a, t], primary) => `<button class="btn ${primary ? 'bigbtn' : 'ghost'}" data-act="${a === 'rec' ? 'go-rec' : (a === 'meet' ? 'go-meet' : (a === 'report' ? 'go-report' : 'nav'))}" data-view="${esc(t)}" data-t="${esc(t)}">${esc(l)}</button>`;
 function nextStepCard(c) {
-  const idx = phaseIdx(c); const p = phasesOf(c)[idx]; const gaps = phaseGaps(c); const done = gaps.filter(g => g.ok).length;
-  const next = phasesOf(c)[idx + 1];
-  return `<section class="panel hero"><div class="row between"><span class="kicker">الدورة ${esc(c.code)} · المرحلة ${idx + 1} من ${phasesOf(c).length} · ${esc(p.wk)}</span><button class="btn ghost small" data-act="nav" data-view="cycle">كل المراحل</button></div>${cycleStrip(c)}
-  <h2 style="font-size:24px">${esc(p.n)}</h2><p><b>المطلوب الآن:</b> ${esc(p.goal)}</p>
-  <div class="row">${p.act.map((a, i) => actBtn(a, i === 0)).join('')}</div>
-  <div class="mini"><b class="small">تكتمل المرحلة عندما يتوفر (${done} من ${gaps.length}):</b>${gaps.map(g => `<div class="gap"><span class="tick ${g.ok ? 'y' : 'n'}" aria-hidden="true">${g.ok ? '✓' : ''}</span><span style="flex:1">${esc(g.t)}</span>${g.target ? `<div class="meter" aria-hidden="true"><span style="width:${Math.min(100, Math.round(g.n / g.target * 100))}%"></span></div><span class="small muted">${g.n}/${g.target}</span>` : ''}</div>`).join('')}</div>
-  ${c.mode === 'parallel' ? subjGrid(c) : ''}
-  <details class="more"><summary>ماذا نفعل في هذه المرحلة؟ ومن المسؤولة؟</summary><ul style="margin:0;padding-inline-start:20px">${p.do.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted">المسؤولة: ${esc(p.who)} · المخرج: ${esc(p.out)}${next ? ' · بعدها: ' + esc(next.n) : ''}</p></details></section>`;
+  if (!c) return `<div class="note">لا توجد دورة بحث درس بعد. ${isManager() ? '<button class="btn small" data-act="go" data-v="schedule">أنشئ الدورة الأولى</button>' : 'ستظهر هنا عندما ينشئها قائد الفريق.'}</div>`;
+  const nx = nextStep(c);
+  if (!nx) return `<div class="ok">اكتملت خطوات ${esc(cycleLabel(c))}. أصدر تقرير الدورة من «التقارير والتحليلات».</div>`;
+  return `<div class="mini"><b>الخطوة التالية: ${esc(nx.s.n)}</b><span class="small">${esc(nx.s.d)}</span><div><button class="btn small" data-act="go" data-v="${nx.s.go}">انتقل إليها</button></div></div>`;
 }
-function memberActivity(m, lastMeet) {
-  const mine = [...D.notes, ...D.evidence, ...D.ai, ...D.lessons].filter(r => r.author === m.code);
-  const last = mine.map(dateOf).filter(Boolean).sort().pop() || '';
-  const week = mine.filter(r => dateOf(r) >= daysAgo(7)).length;
-  const refl = lastMeet ? D.notes.some(n => n.context === 'after' && n.meetingId === lastMeet.code && n.author === m.code) : null;
-  const attended = lastMeet ? (lastMeet.attendees || []).includes(m.code) : false;
-  const open = D.tasks.filter(t => t.status !== 'done' && t.owner === m.code).length;
-  const late = D.tasks.filter(t => t.status !== 'done' && t.owner === m.code && t.due && t.due < today()).length;
-  const age = last ? Math.round((new Date(today()) - new Date(last)) / 864e5) : 99;
-  return {last, week, refl, attended, open, late, dot: age <= 7 ? 'g' : (age <= 14 ? 'a' : 'r')};
+V.dash = () => {
+  const inv = S.invited.filter(p => !store.get('hideInv', []).includes(p.id));
+  const invHtml = inv.length ? `<section class="panel hero"><h2>دعوات للانضمام</h2><div class="ledger">${inv.map(p => { const r = S.invRoles[p.id]; return `<div class="rec"><div class="row between"><b>${esc(p.name)}</b><span class="small muted">${esc(p.org || '')} · ${esc(p.stage || '')} · ${esc((p.subjects || []).join('، '))}</span></div><div class="meta">الأدوار المقترحة لك: ${r ? esc(r.map(x => ROLE[x] || x).join('، ')) : '…'}</div><div class="row"><button class="btn small" data-act="accept" data-id="${esc(p.id)}">قبول الانضمام</button><button class="btn ghost small" data-act="hideinv" data-id="${esc(p.id)}">ليس الآن</button></div></div>`; }).join('')}</div></section>` : '';
+  if (!S.projects.length) return `${head('أهلًا بك في بُرهان', 'منصة لإدارة بحث الدرس والتطوير المهني التشاركي وتحليل أدلة التعلم، لأي مادة ولأي مرحلة ولأي فريق.')}
+    ${invHtml}
+    <section class="panel hero"><h2>ابدأ مشروعك الأول</h2><p>مشروع بحث الدرس يجمع فريقك وهدفه البعيد ومشكلة التعلم ودوراته. تختار في المعالج الوحدات الاختيارية التي تحتاجها فقط.</p>
+    <div class="row"><button class="btn bigbtn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">جرّب المنصة بثلاثة مشاريع تجريبية</button></div></section>
+    ${howItWorks()}`;
+  if (!S.P) return `${head('لوحة التحكم')}${invHtml}${empty('اختر مشروعًا من القائمة.')}`;
+  const P = S.P; const c = curCycle(); const pend = D.decisions.filter(d => (d.status || 'proposed') === 'proposed');
+  return `${head(P.name, `${esc(P.org || '')}${P.org ? ' · ' : ''}${esc(P.stage || '')} · ${esc((P.subjects || []).join('، ') || 'بلا مادة محددة')}${P.grade ? ' · ' + esc(P.grade) : ''}`)}
+  ${invHtml}
+  <section class="panel hero"><div class="row between"><span class="kicker">${esc(cycleLabel(c))}</span><button class="btn ghost small" data-act="go" data-v="schedule">الجدول التنفيذي</button></div>${c ? stepChips(c) : ''}${nextStepCard(c)}</section>
+  <section class="panel"><h2>المشروع بالأرقام</h2><div class="kpis">
+    <div class="kpi"><b>${D.members.length}</b><span>عضوًا في الفريق</span></div><div class="kpi"><b>${D.cycles.length}</b><span>دورة بحث درس</span></div>
+    <div class="kpi"><b>${D.lessons.length}</b><span>نسخة درس</span></div><div class="kpi"><b>${D.observations.length}</b><span>دليل ملاحظة</span></div>
+    <div class="kpi"><b>${D.decisions.length}</b><span>قرار تحسين</span></div><div class="kpi"><b>${D.reflections.length}</b><span>تأمل</span></div></div>
+    <div class="row">${MODULES.filter(m => mod(m[0])).map(m => pill(m[1], 'good')).join(' ') || '<span class="small muted">لا وحدات اختيارية مفعّلة: المشروع يعمل ببحث الدرس وحده.</span>'}</div></section>
+  ${isManager() && pend.length ? `<section class="panel"><h2>قرارات بانتظار الاعتماد (${pend.length})</h2><div class="ledger">${pend.slice(0, 5).map(d => `<div class="rec"><div class="body">${esc(d.decision)}</div><div class="meta">${esc(cycleLabel(D.cycles.find(x => x.id === d.cycleId)))} · ${esc(memberName(d.createdBy))}</div></div>`).join('')}</div><div><button class="btn small" data-act="go" data-v="improve">راجعها واعتمدها</button></div></section>` : ''}
+  <section class="panel"><h2>سجّل بسرعة</h2><div class="grid">
+    <button class="action" data-act="go" data-v="obs"><b>${icon('eye')}ملاحظة دليل تعلّم</b><span>ما رأيته بالضبط، منفصلًا عن تفسيرك.</span></button>
+    <button class="action" data-act="go" data-v="lessons"><b>${icon('book')}خطة الدرس البحثي</b><span>نسخة أولى، أو نسخة معدّلة بقرار.</span></button>
+    <button class="action" data-act="go" data-v="improve"><b>${icon('refl')}اجتماع أو قرار أو تأمل</b><span>من الدليل إلى قرار التحسين.</span></button></div></section>`;
+};
+function howItWorks() {
+  return `<section class="panel"><h2>كيف تعمل المنصة؟</h2><p class="small muted">كل مشروع يسير في دورة بحث درس عامة، ويمكن أن تتكرر الدورة أكثر من مرة:</p>
+  <ol style="margin:0;padding-inline-start:22px">${STEPS.map(s => `<li><b>${esc(s.n)}:</b> <span class="small">${esc(s.d)}</span></li>`).join('')}</ol>
+  <p class="small muted">وتصنيف SOLO ومساعد الذكاء الاصطناعي ومساحة الباحث وحدات اختيارية، يعمل المشروع كاملًا بدونها.</p></section>`;
 }
-function lastPastMeeting() { return D.meetings.filter(m => m.date && m.date <= today()).sort((a, b) => b.date.localeCompare(a.date))[0]; }
-function teamPanel() {
-  const lm = lastPastMeeting(); const rows = D.team.slice().sort((a, b) => a.code.localeCompare(b.code)).map(m => [m, memberActivity(m, lm)]);
-  const missing = rows.filter(([m, a]) => lm && a.attended && !a.refl).map(([m]) => m.code);
-  return `<section class="panel"><div class="row between"><h2>متابعة الفريق</h2><span class="small muted">للقائدة فقط · ${lm ? 'آخر اجتماع ' + esc(lm.code) + ' (' + esc(fmtDate(lm.date)) + ')' : 'لا اجتماع مسجّل بعد'}</span></div>
-  <div class="scroll"><table class="teamtbl"><thead><tr><th>العضوة</th><th>آخر تسجيل</th><th>هذا الأسبوع</th><th>تأمل آخر اجتماع</th><th>مهام مفتوحة</th></tr></thead><tbody>${rows.map(([m, a]) => `<tr><td><span class="dot ${a.dot}" aria-hidden="true"></span><b>${esc(m.code)}</b> ${subjChip(m.discipline)}${m.userId ? '' : ' <span class="chip warn">لم تربط حسابها</span>'}</td><td>${a.last ? esc(fmtDate(a.last)) : '<span class="muted">لا شيء بعد</span>'}</td><td>${a.week} سجل</td><td>${!lm ? '—' : (!a.attended ? '<span class="muted">لم تحضر</span>' : (a.refl ? '✓ سُجّل' : '<span class="chip warn">لم يُسجّل</span>'))}</td><td>${a.open}${a.late ? ` <span class="chip warn">${a.late} متأخرة</span>` : ''}</td></tr>`).join('')}</tbody></table></div>
-  <p class="tiny muted"><span class="dot g"></span>سجّلت خلال 7 أيام · <span class="dot a"></span>8–14 يومًا · <span class="dot r"></span>أكثر من أسبوعين أو لا شيء</p>
-  ${missing.length ? `<div class="row"><span class="small">تأملات ناقصة: ${esc(missing.join('، '))}</span><button class="btn ghost small" data-act="copy-nudge" data-who="${esc(missing.join('،'))}" data-m="${esc(lm.code)}">نسخ رسالة تذكير</button></div>` : ''}</section>`;
-}
-function myReminders() {
-  const me = myMember(); if (!me) return '';
-  const lm = lastPastMeeting(); const a = memberActivity(me, lm); const items = [];
-  if (lm && a.attended && !a.refl) items.push(`<div class="note row between"><span>لم تسجّلي تأملك بعد اجتماع ${esc(lm.code)} (${esc(fmtDate(lm.date))}). يكفي 3 جمل.</span><button class="btn small" data-act="go-rec" data-t="after">سجّلي التأمل</button></div>`);
-  if (a.late) items.push(`<div class="note">لديكِ ${a.late} مهمة متأخرة في «مهامي» أدناه.</div>`);
-  return items.join('');
-}
-V.home = () => {
-  const st = setupStatus(); const setupDone = st.every(s => s[1]); const c = curCycle(); const me = myMember(); const lead = isLeader();
-  const myTasks = D.tasks.filter(t => t.status !== 'done' && (!me || t.owner === me.code || t.owner === 'الفريق')).sort((a, b) => String(a.due).localeCompare(String(b.due)));
-  const nextMeeting = D.meetings.filter(m => m.date >= today()).sort((a, b) => a.date.localeCompare(b.date))[0];
-  return `<div><h1>${me ? 'أهلًا ' + esc(me.code) : 'ماذا أفعل الآن؟'}</h1><p class="lede">${me ? esc(me.discipline || '') + ' · ' + esc(me.role || '') + '. ' : ''}هنا ما يلزمكِ اليوم: أين وصل الفريق، وخطوتكِ التالية، وأين تسجّلينها.</p></div>
-  ${introCard()}
-  ${linkChooser()}
-  ${accessPanel()}
-  ${lead && !setupDone ? `<section class="panel"><h2>إعداد المنصة (مرة واحدة)</h2><ul class="checklist">${st.map(([t, ok]) => `<li><span class="tick ${ok ? 'y' : 'n'}" aria-hidden="true">${ok ? '✓' : ''}</span><span>${esc(t)}</span></li>`).join('')}</ul><div><button class="btn" data-act="nav" data-view="setup">أكملي الإعداد</button></div></section>` : ''}
-  ${myReminders()}
-  ${c ? nextStepCard(c) : `<section class="panel"><div class="empty">لا توجد دورة بحث بعد. ${lead ? 'أنشئيها من «الإعداد».' : 'ستظهر هنا عندما تنشئها قائدة المشروع.'}</div></section>`}
-  ${lead ? teamPanel() : ''}
-  <section class="panel"><h2>سجّلي بسرعة</h2><div class="grid">
-    ${Object.entries(CONTEXTS).map(([k, x]) => `<button class="action" data-act="go-rec" data-t="${k}"><b>${icon(x.icon)}${esc(x.n)}</b><span>${esc(x.d)}</span></button>`).join('')}
-    <button class="action" data-act="go-rec" data-t="evidence"><b>${icon('evidence')}درجات الطالبات</b><span>طالبة واحدة، أو الفصل كاملًا في جدول.</span></button>
-    <button class="action" data-act="nav" data-view="ai"><b>${icon('ai')}تصميم درس مع AI</b><span>يحفظ ما كتبه الذكاء الاصطناعي وما غيّرتِه ولماذا.</span></button></div></section>
-  <div class="cols">
-    <section class="panel"><h2>مهامي</h2><div class="ledger">${myTasks.length ? myTasks.slice(0, 6).map(taskRow).join('') : '<div class="empty">لا مهام مفتوحة لكِ. تُوزَّع المهام في نهاية كل اجتماع.</div>'}</div>
-    ${nextMeeting ? `<div class="ok">الاجتماع القادم ${esc(nextMeeting.code)}: ${esc(fmtDate(nextMeeting.date))}${nextMeeting.goal ? ' — ' + esc(nextMeeting.goal) : ''}</div>` : '<div class="note">لا اجتماع قادم مسجّل. الإيقاع المقترح: اجتماع أسبوعي ثابت 45 دقيقة.</div>'}</section>
-    ${lead ? `<section class="panel"><h2>المقررات المشاركة</h2><div class="ledger">${SUBJ.map(s => { const cls = D.classes.filter(x => x.subject === s.n); return `<div class="rec"><div class="row between">${subjChip(s.n)}<span class="small muted">${cls.length} فصل · ${cls.reduce((a, x) => a + (Number(x.count) || 0), 0)} طالبة</span></div><div class="small">${D.notes.filter(n => n.subject === s.n).length} ملاحظة · ${D.evidence.filter(n => n.subject === s.n).length} دليل تعلّم · ${D.lessons.filter(n => n.subject === s.n).length} نسخة درس · ${D.ai.filter(n => n.subject === s.n).length} سجل AI</div></div>`; }).join('')}</div></section>` : ''}
-  </div>`;
+ACT.hideinv = b => { store.set('hideInv', uniq(store.get('hideInv', []).concat(b.dataset.id))); render(); };
+ACT.accept = async b => {
+  const p = S.invited.find(x => x.id === b.dataset.id); if (!p) return; b.disabled = true;
+  try {
+    const invRef = db.collection('projects').doc(p.id).collection('invites').doc(ME.email);
+    const inv = await invRef.get(); const roles = inv.exists ? (inv.data().roles || ['teacher']) : ['teacher'];
+    const school = inv.exists ? (inv.data().school || '') : '';
+    await db.collection('projects').doc(p.id).collection('members').doc(ME.uid).set({uid: ME.uid, email: ME.email, name: ME.name || (inv.exists && inv.data().name) || ME.email, roles, school, joinedAt: nowIso()});
+    const up = {memberUids: uniq((p.memberUids || []).concat(ME.uid)), invitedEmails: (p.invitedEmails || []).filter(e => e !== ME.email), managerUids: p.managerUids || [], researcherUids: p.researcherUids || []};
+    if (roles.some(r => MANAGER_ROLES.includes(r))) up.managerUids = uniq(up.managerUids.concat(ME.uid));
+    if (roles.includes('researcher')) up.researcherUids = uniq(up.researcherUids.concat(ME.uid));
+    await db.collection('projects').doc(p.id).set(up, {merge: true});
+    toast('انضممت إلى «' + p.name + '».'); selectProject(p.id);
+  } catch (x) { dbErr(x); b.disabled = false; }
 };
 
-/* ---- Live meeting mode ---- */
-const LIVE_STEPS = [['افتتاح', 5], ['عرض الأدلة', 15], ['تحليل وقرار', 15], ['المهام', 5], ['تأمل وحفظ', 5]];
-function liveNew() { const c = curCycle(); const ph = c ? phaseOf(c) : null; return {step: 0, started: 0, stepAt: 0, date: today(), cycleId: c ? c.code : '', goal: ph ? 'المرحلة ' + c.phase + ' (' + ph.n + '): ' + ph.goal : '', attendees: D.team.map(m => m.code), ev: {}, discussion: '', decisions: [], tasks: [], reflection: ''}; }
-function live() { if (!S.live) S.live = store.get('live', null) || liveNew(); return S.live; }
-function liveSave() { store.set('live', S.live); }
-const lv = (path, val, attrs = '', tag = 'textarea') => tag === 'textarea' ? `<textarea data-live="${path}" ${attrs}>${esc(val || '')}</textarea>` : `<input data-live="${path}" value="${esc(val || '')}" ${attrs}>`;
-const mmss = s => pad(Math.floor(s / 60), 2) + ':' + pad(s % 60, 2);
-function liveHtml() {
-  const L = live(); const c = curCycle();
-  if (!L.started) { const f = liveNew(); if (!L.attTouched && !L.attendees.length) L.attendees = f.attendees; if (!L.cycleId) L.cycleId = f.cycleId; if (!L.goal) L.goal = f.goal; }
-  if (!L.started) return `<section class="panel hero"><span class="kicker">وضع الاجتماع</span><h2>اجتماع بحث الدرس في 45 دقيقة</h2><p class="lede small">خمس خطوات على شاشة واحدة. تكتبين أثناء الاجتماع، وفي النهاية يُحفظ المحضر والقرارات والمهام دفعة واحدة. إن أُغلقت الصفحة يبقى ما كتبتِه على هذا الجهاز.</p>
-    <div class="grid">${field('التاريخ', lv('date', L.date, 'type="date"', 'input'))}${field('الدورة', `<select data-live="cycleId">${opts(D.cycles.map(x => x.code), L.cycleId, '—')}</select>`)}</div>
-    ${field('هدف الاجتماع', lv('goal', L.goal, 'rows="2"'))}
-    <div><div class="hint" style="margin-bottom:6px">الحاضرات (اضغطي لإلغاء الغائبة)</div><div class="chips">${D.team.map(m => `<label><input type="checkbox" data-live-att value="${esc(m.code)}"${L.attendees.includes(m.code) ? ' checked' : ''}>${esc(m.code)} · ${esc(m.discipline || '')}</label>`).join('')}</div></div>
-    <div><button class="btn bigbtn" type="button" data-act="live-start">ابدئي الاجتماع</button></div></section>`;
-  const st = L.step; const att = D.team.filter(m => L.attendees.includes(m.code));
+/* ---------- projects ---------- */
+V.projects = () => {
+  if (S.wiz) return wizardView();
+  return `${head('مشاريعي', 'كل مشروع مساحة عمل مستقلة: فريقه ودوراته ودروسه وأدلته ووحداته الاختيارية. يمكنك أن تكون عضوًا في أكثر من مشروع بأدوار مختلفة.')}
+  <div class="row"><button class="btn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">إنشاء ثلاثة مشاريع تجريبية</button></div>
+  <section class="panel"><div class="ledger">${S.projects.map(p => { const mine = p.id === S.pid ? meMember() : null; return `<div class="rec${p.id === S.pid ? ' mine' : ''}"><div class="row between"><b style="font-size:17px">${esc(p.name)}</b>${p.id === S.pid ? pill('المشروع الحالي', 'good') : `<button class="btn small" data-act="openproj" data-id="${esc(p.id)}">فتح</button>`}</div>
+    <div class="meta"><span>${esc(p.org || '—')}</span><span>${esc(p.stage || '')}</span><span>${esc((p.subjects || []).join('، '))}</span><span>${(p.memberUids || []).length} عضو</span>${(p.managerUids || []).includes(ME.uid) ? pill('إدارة') : ''}</div>
+    <div class="row">${MODULES.filter(m => p.modules && p.modules[m[0]]).map(m => pill(m[1])).join(' ')}</div>${mine ? '' : ''}</div>`; }).join('') || empty('لا مشاريع بعد.')}</div></section>`;
+};
+ACT.openproj = b => { selectProject(b.dataset.id); go('dash'); };
+ACT.newproject = () => { S.wiz = store.get('wizDraft', null) || {step: 0, data: {myRoles: ['leader'], team: [], modules: [], subjects: []}}; S.view = 'projects'; store.set('view', 'projects'); render(); };
+
+const WIZ = ['البيانات العامة', 'الفريق', 'الهدف البعيد', 'مشكلة التعلم', 'التخطيط الزمني', 'الوحدات الاختيارية', 'مراجعة واعتماد'];
+function wizardView() {
+  const w = S.wiz; const d = w.data; const i = w.step;
+  const bar = `<div class="wiz">${WIZ.map((t, k) => `<span class="${k === i ? 'on' : (k < i ? 'done' : '')}">${k + 1}. ${esc(t)}</span>`).join('')}</div>`;
   let body = '';
-  if (st === 0) { const ph = c ? phaseOf(c) : null; body = `${field('هدف الاجتماع', lv('goal', L.goal, 'rows="2"'))}${ph ? `<div class="mini"><b class="small">أين نحن: المرحلة ${esc(c.phase)} · ${esc(ph.n)}</b><span class="small">${esc(ph.goal)}</span>${phaseGaps(c).map(g => `<span class="small">${g.ok ? '✓' : '○'} ${esc(g.t)} (${g.n}${g.target ? '/' + g.target : ''})</span>`).join('')}</div>` : ''}`; }
-  if (st === 1) body = `<p class="small muted">3 دقائق لكل معلمة: ماذا تُظهر أعمال طالباتها؟ اكتبي الأرقام والرموز لا الانطباعات.</p><div class="grid wide">${att.map(m => field(m.code + ' · ' + (m.discipline || ''), lv('ev.' + m.code, L.ev[m.code], 'rows="3" placeholder="مثال: 4 من 6 بطاقات خروج فسّرت دون نقل (E0012–E0017)"'))).join('')}</div>`;
-  if (st === 2) body = `${field('ماذا تعني الأدلة؟ ما البدائل التي طُرحت؟', lv('discussion', L.discussion, 'rows="4"'))}
-    <div class="mini"><b>إضافة قرار</b><div class="grid wide">${field('الدليل', `<textarea id="ldEv" rows="2" placeholder="لا قرار بلا دليل: رموز أو أرقام"></textarea>`)}${field('القرار', `<textarea id="ldDec" rows="2" placeholder="ماذا قرّرنا؟"></textarea>`)}${field('السبب', `<textarea id="ldWhy" rows="2"></textarea>`)}${field('الإجراء', `<textarea id="ldAct" rows="2" placeholder="ماذا سنفعل؟ في أي نسخة من الدرس؟"></textarea>`)}</div><div class="row">${field('المقرر المعني', `<select id="ldSubj">${opts(SUBJ.map(s => s.n), '', 'كل المقررات')}</select>`)}<button type="button" class="btn" data-act="live-dec" style="align-self:end">＋ إضافة القرار</button></div></div>
-    ${L.decisions.length ? `<div class="ledger">${L.decisions.map((d, i) => `<div class="rec"><div class="row between"><b>قرار ${i + 1}: ${esc(d.decision)}</b><button type="button" class="btn ghost small" data-act="live-rm" data-k="decisions" data-i="${i}">حذف</button></div><div class="small muted">الدليل: ${esc(d.evidence)}${d.reason ? ' · السبب: ' + esc(d.reason) : ''}</div></div>`).join('')}</div>` : '<div class="empty">لم يُضف قرار بعد.</div>'}`;
-  if (st === 3) body = `<div class="mini"><b>إضافة مهمة</b><div class="grid">${field('المهمة', `<input id="ltTitle" placeholder="مثال: إدخال درجات خط الأساس لفصلي">`)}${field('المسؤولة', `<select id="ltOwner">${opts([...att.map(m => [m.code, m.code + ' · ' + (m.discipline || '')]), ['الفريق', 'الفريق كله']])}</select>`)}${field('الاستحقاق', `<input id="ltDue" type="date" value="${addDays(7)}">`)}</div><div><button type="button" class="btn" data-act="live-task">＋ إضافة المهمة</button></div></div>
-    ${L.tasks.length ? `<div class="ledger">${L.tasks.map((t, i) => `<div class="rec"><div class="row between"><b>${esc(t.title)}</b><button type="button" class="btn ghost small" data-act="live-rm" data-k="tasks" data-i="${i}">حذف</button></div><div class="small muted">${esc(t.owner)} · حتى ${esc(fmtDate(t.due))}</div></div>`).join('')}</div>` : '<div class="empty">لم تُضف مهام بعد. كل قرار يحتاج مهمة واحدة على الأقل.</div>'}`;
-  if (st === 4) body = `${field('جملة من كل عضوة: ماذا نأخذ من هذا الاجتماع؟', lv('reflection', L.reflection, 'rows="4"'))}
-    <div class="note">ذكّري الفريق: كل عضوة تكتب تأملها الفردي من «سجّلي ← بعد الاجتماع» خلال 24 ساعة.</div>
-    <div class="mini"><b>سيُحفظ الآن:</b><span class="small">اجتماع واحد بحضور ${att.length} · ${L.decisions.length} قرار · ${L.tasks.length} مهمة · ${Object.values(L.ev).filter(v => String(v).trim()).length} عرض أدلة</span>${!L.decisions.length ? '<span class="small" style="color:var(--amber)">لا قرارات بعد. يمكن الحفظ، لكن الاجتماع الجيد ينتهي بقرار.</span>' : ''}</div>
-    <div class="row"><button type="button" class="btn bigbtn" data-act="live-save">حفظ الاجتماع وكل ما فيه</button></div>`;
-  return `<section class="panel"><div class="row between"><div><span class="kicker" style="color:var(--accent);font-weight:700;font-size:13px">اجتماع جارٍ · ${esc(fmtDate(L.date))}</span><h2>${esc(LIVE_STEPS[st][0])} <span class="small muted">(${LIVE_STEPS[st][1]} دقائق مقترحة)</span></h2></div><div style="text-align:left"><div class="clock" id="liveClock">00:00</div><div class="tiny muted" id="liveStepClock"></div></div></div>
-  <div class="livesteps">${LIVE_STEPS.map(([n, mi], i) => `<button type="button" data-act="live-step" data-i="${i}"${i === st ? ' aria-current="step"' : ''} class="${i < st ? 'done' : ''}"><b>${i + 1}. ${esc(n)}</b><span class="tiny">${mi} د</span></button>`).join('')}</div>
-  ${body}
-  <div class="row between"><div class="row">${st > 0 ? `<button type="button" class="btn ghost" data-act="live-step" data-i="${st - 1}">→ السابق</button>` : ''}${st < 4 ? `<button type="button" class="btn" data-act="live-step" data-i="${st + 1}">التالي: ${esc(LIVE_STEPS[st + 1][0])} ←</button>` : ''}</div><button type="button" class="btn ghost small" data-act="live-cancel">إلغاء الاجتماع</button></div></section>`;
+  if (i === 0) body = `<div class="grid wide">${field('اسم المشروع', inp('name', d.name, 'required placeholder="مثال: تعميق الفهم في الصف الأول الثانوي"'))}${field('المؤسسة التعليمية', inp('org', d.org, 'placeholder="اسم المدرسة أو الجهة"'))}</div>
+    <div class="grid">${field('المرحلة', sel('stage', STAGES, d.stage || 'الثانوية'))}${field('الصف', inp('grade', d.grade, 'placeholder="مثال: الأول الثانوي"'))}${field('العام الدراسي', inp('year', d.year, 'placeholder="1448هـ"'))}${field('مدة المشروع', inp('duration', d.duration, 'placeholder="مثال: فصل دراسي"'))}</div>
+    <div><div class="hint" style="margin-bottom:6px">المادة أو المجال (يمكن أكثر من مادة إذا كان المشروع متعدد التخصصات)</div>${checks('subjects', SUBJECT_HINTS, d.subjects)}</div>
+    ${field('مادة أو مجال غير موجود في القائمة', inp('subjectsOther', d.subjectsOther, 'placeholder="اكتبها، ويمكن أكثر من واحدة بينها فاصلة"'))}`;
+  if (i === 1) body = `<div>${field('دورك أنت في المشروع', checks('myRoles', ROLES, d.myRoles))}<p class="tiny muted">منشئ المشروع يملك صلاحية إدارته دائمًا.</p></div>
+    <div class="mini"><b>أعضاء الفريق</b><span class="small muted">أضف بريد كل عضو ودوره. تصله الدعوة عندما ينشئ حسابه في بُرهان بالبريد نفسه. يمكن للعضو أن يحمل أكثر من دور، ويمكن أن يكون من مدرسة أخرى.</span>
+    <div class="grid">${field('الاسم', '<input id="wName">')}${field('البريد', '<input id="wEmail" type="email" dir="ltr">')}${field('المدرسة (اختياري)', '<input id="wSchool">')}</div>
+    <div id="wRoles">${checks('wRole', ROLES, ['teacher'])}</div><div><button type="button" class="btn ghost small" data-act="wizadd">إضافة العضو</button></div>
+    ${(d.team || []).length ? `<table><thead><tr><th>الاسم</th><th>البريد</th><th>الأدوار</th><th></th></tr></thead><tbody>${d.team.map((t, k) => `<tr><td>${esc(t.name)}${t.school ? '<br><span class="tiny muted">' + esc(t.school) + '</span>' : ''}</td><td dir="ltr">${esc(t.email)}</td><td>${esc(t.roles.map(r => ROLE[r]).join('، '))}</td><td><button type="button" class="btn ghost small" data-act="wizdel" data-i="${k}">حذف</button></td></tr>`).join('')}</tbody></table>` : '<span class="small muted">لم يُضف أحد بعد. يمكنك دعوة الفريق لاحقًا من «الفرق».</span>'}</div>`;
+  if (i === 2) body = `${field('الهدف البعيد للتعلم', area('longTerm', d.longTerm, 'rows="3" placeholder="ماذا نريد أن يصبح عليه المتعلمون بعد سنوات؟ مثال: أن يفسّروا الظواهر ولا يكتفوا بحفظ الإجراءات"'))}
+    <div class="grid wide">${field('الأفكار الكبرى', area('bigIdeas', d.bigIdeas, 'rows="3"'))}${field('عادات التفكير', area('habits', d.habits, 'rows="3" placeholder="مثال: التساؤل، التبرير، المثابرة"'))}</div>
+    ${field('مؤشرات النجاح', area('successIndicators', d.successIndicators, 'rows="3" placeholder="كيف سنعرف أننا اقتربنا من الهدف؟"'))}`;
+  if (i === 3) body = `${field('مشكلة التعلم', area('statement', d.statement, 'rows="3" placeholder="ما الذي يتعثر فيه المتعلمون؟"'))}
+    <div class="grid wide">${field('الأدلة على المشكلة', area('evidence', d.evidence, 'rows="3" placeholder="نتائج، أعمال متعلمين، ملاحظات"'))}${field('المتعلمون المستهدفون', area('learners', d.learners, 'rows="3"'))}</div>
+    ${field('الأسئلة التي يسعى الفريق إلى دراستها', area('questions', d.questions, 'rows="3"'))}`;
+  if (i === 4) body = `<div class="grid">${field('عدد الحصص الأسبوعية', inp('lessonsPerWeek', d.lessonsPerWeek, 'type="number" min="0" inputmode="numeric"'))}${field('مدة الحصة (دقيقة)', inp('lessonMinutes', d.lessonMinutes, 'type="number" min="0" inputmode="numeric"'))}${field('عدد دورات بحث الدرس', inp('cycles', d.cycles || 2, 'type="number" min="1" max="12" inputmode="numeric"'))}${field('تاريخ البدء', inp('startDate', d.startDate, 'type="date"'))}</div>
+    <div class="grid">${field('يوم الاجتماع', inp('meetingDay', d.meetingDay, 'placeholder="مثال: الاثنين"'))}${field('وقت الاجتماع', inp('meetingTime', d.meetingTime, 'placeholder="مثال: الحصة السادسة"'))}${field('مدة الاجتماع (دقيقة)', inp('meetingMinutes', d.meetingMinutes, 'type="number" min="0" inputmode="numeric"'))}</div>
+    ${field('الموارد المتاحة', area('resources', d.resources, 'rows="2" placeholder="قاعات، أجهزة، وقت مخصص..."'))}`;
+  if (i === 5) body = `<p class="small muted">كلها اختيارية. يعمل المشروع كاملًا ببحث الدرس وحده، ويمكن تفعيلها أو إيقافها لاحقًا من إعدادات المشروع دون التأثير في مشاريع أخرى.</p>
+    <div class="modgrid">${MODULES.map(([k, n, ds]) => `<label><input type="checkbox" name="modules" value="${k}"${(d.modules || []).includes(k) ? ' checked' : ''}><span><b>${esc(n)}</b><small>${esc(ds)}</small></span></label>`).join('')}</div>`;
+  if (i === 6) { const subj = wizSubjects(d); body = `<div class="cols"><div class="mini"><b>${esc(d.name || 'بلا اسم')}</b><span class="small">${esc(d.org || '—')} · ${esc(d.stage || '')} · ${esc(subj.join('، ') || 'بلا مادة')}${d.grade ? ' · ' + esc(d.grade) : ''}</span><span class="small muted">${esc(d.year || '')} ${esc(d.duration || '')}</span></div>
+    <div class="mini"><b>الفريق</b><span class="small">أنت: ${esc((d.myRoles || []).map(r => ROLE[r]).join('، ') || 'قائد الفريق')}</span><span class="small">${(d.team || []).length} دعوة: ${esc((d.team || []).map(t => t.name || t.email).join('، ') || '—')}</span></div>
+    <div class="mini"><b>الجدول</b><span class="small">${esc(d.cycles || 2)} دورة · ${esc(d.lessonsPerWeek || '؟')} حصة أسبوعيًا · اجتماع ${esc(d.meetingDay || '—')} ${esc(d.meetingTime || '')}</span></div>
+    <div class="mini"><b>الوحدات المفعّلة</b><span class="small">${esc((d.modules || []).map(m => MODULE[m]).join('، ') || 'لا شيء: بحث الدرس وحده')}</span></div></div>
+    ${d.longTerm ? `<div class="mini"><b>الهدف البعيد</b><span class="small">${esc(d.longTerm)}</span></div>` : '<div class="note">لم يُكتب الهدف البعيد بعد. يمكنك كتابته لاحقًا من إعدادات المشروع.</div>'}
+    ${d.statement ? `<div class="mini"><b>مشكلة التعلم</b><span class="small">${esc(d.statement)}</span></div>` : ''}`; }
+  return `${head('مشروع جديد', 'سبع خطوات قصيرة. ما لا تعرفه الآن يمكنك إكماله لاحقًا من إعدادات المشروع.')}${bar}
+  <form class="panel" data-form="wiz">${body}
+  <div class="row between"><div class="row">${i > 0 ? '<button type="button" class="btn ghost" data-act="wizback">السابق</button>' : ''}<button type="button" class="btn ghost" data-act="wizcancel">إلغاء</button></div>
+  <button type="submit" class="btn">${i < WIZ.length - 1 ? 'التالي' : 'إنشاء مساحة العمل'}</button></div></form>`;
 }
-function liveTick() {
-  const el = $('#liveClock'); const L = S.live; if (!el || !L || !L.started) return;
-  const t = Math.floor((Date.now() - L.started) / 1000); el.textContent = mmss(t) + ' / 45:00'; el.classList.toggle('over', t > 45 * 60);
-  const s2 = $('#liveStepClock'); if (s2 && L.stepAt) { const u = Math.floor((Date.now() - L.stepAt) / 1000); const lim = LIVE_STEPS[L.step][1] * 60; s2.textContent = 'هذه الخطوة ' + mmss(u) + ' من ' + mmss(lim); s2.style.color = u > lim ? 'var(--amber)' : ''; }
-}
-setInterval(liveTick, 1000);
-async function liveSaveAll() {
-  const L = live(); if (!S.db) { toast('لا يمكن الحفظ: قاعدة البيانات غير متاحة في هذا العرض.'); return; }
-  const att = L.attendees; const evText = Object.entries(L.ev).filter(([, v]) => String(v).trim()).map(([k, v]) => k + ': ' + v).join('\n');
-  const mins = L.started ? Math.round((Date.now() - L.started) / 60000) : null;
+const wizSubjects = d => uniq((d.subjects || []).concat(lines(d.subjectsOther)));
+function wizRead() { const f = $('form[data-form=wiz]'); if (!f) return; const o = formData(f); delete o.wRole; Object.assign(S.wiz.data, o); store.set('wizDraft', S.wiz); }
+ACT.wizback = () => { wizRead(); S.wiz.step = Math.max(0, S.wiz.step - 1); S.dirty = false; render(); };
+ACT.wizcancel = () => { S.wiz = null; store.set('wizDraft', null); S.dirty = false; render(); };
+ACT.wizadd = () => {
+  wizRead(); const em = String($('#wEmail').value || '').trim().toLowerCase(); const nm = $('#wName').value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('اكتب بريدًا صحيحًا للعضو.'); return; }
+  if (em === ME.email) { toast('هذا بريدك أنت؛ حدّد دورك في الأعلى.'); return; }
+  const roles = $$('#wRoles input:checked').map(x => x.value); if (!roles.length) { toast('اختر دورًا واحدًا على الأقل.'); return; }
+  S.wiz.data.team = (S.wiz.data.team || []).filter(t => t.email !== em).concat({name: nm, email: em, roles, school: $('#wSchool').value.trim()});
+  store.set('wizDraft', S.wiz); S.dirty = false; render();
+};
+ACT.wizdel = b => { wizRead(); S.wiz.data.team.splice(Number(b.dataset.i), 1); store.set('wizDraft', S.wiz); S.dirty = false; render(); };
+FORM.wiz = async o => {
+  delete o.wRole; Object.assign(S.wiz.data, o);
+  if (S.wiz.step === 0 && !S.wiz.data.name) { toast('اكتب اسم المشروع.'); return false; }
+  if (S.wiz.step < WIZ.length - 1) { S.wiz.step++; store.set('wizDraft', S.wiz); return true; }
+  const pid = await createProject(S.wiz.data);
+  if (pid) { S.wiz = null; store.set('wizDraft', null); toast('أُنشئت مساحة العمل.'); S.view = 'dash'; store.set('view', 'dash'); }
+  return !!pid;
+};
+async function createProject(d, extra = {}) {
+  const pid = nid('p'); S.creating = true;
+  const myRoles = (d.myRoles && d.myRoles.length) ? d.myRoles : ['leader'];
+  const mods = {}; MODULES.forEach(([k]) => { mods[k] = (d.modules || []).includes(k); });
+  const team = d.team || [];
+  const doc = Object.assign({
+    name: d.name, org: d.org || '', stage: d.stage || '', subjects: wizSubjects(d), grade: d.grade || '', year: d.year || '', duration: d.duration || '',
+    goals: {longTerm: d.longTerm || '', bigIdeas: d.bigIdeas || '', habits: d.habits || '', successIndicators: d.successIndicators || ''},
+    problem: {statement: d.statement || '', evidence: d.evidence || '', learners: d.learners || '', questions: d.questions || ''},
+    schedule: {lessonsPerWeek: d.lessonsPerWeek || '', lessonMinutes: d.lessonMinutes || '', cycles: Number(d.cycles) || 1, startDate: d.startDate || '', meetingDay: d.meetingDay || '', meetingTime: d.meetingTime || '', meetingMinutes: d.meetingMinutes || '', resources: d.resources || ''},
+    modules: mods, framework: mods.solo ? 'solo' : 'none', criteria: [], indicators: DEFAULT_INDICATORS.slice(), customObsFields: [], researchShare: {lessons: true, observations: false, decisions: true, meetings: false, ai: true},
+    createdBy: ME.uid, createdAt: nowIso(), memberUids: [ME.uid], managerUids: [ME.uid], researcherUids: myRoles.includes('researcher') ? [ME.uid] : [], invitedEmails: team.map(t => t.email)}, extra);
   try {
-    const mid = await create('meetings', 'M', 2, base({date: L.date, cycleId: L.cycleId, attendees: att, goal: L.goal, agenda: PROTOCOL.join('\n'), evidence: evText, discussion: L.discussion, decisionsSummary: L.decisions.map((d, i) => (i + 1) + '. ' + d.decision).join('\n'), reflection: L.reflection, durationMin: mins, mode: 'live'}));
-    if (!mid) return;
-    const c = curCycle();
-    const dc = await createMany('decisions', 'D', 4, L.decisions.map(d => base({meetingId: mid, cycleId: L.cycleId, date: L.date, subject: d.subject, situation: L.discussion ? L.discussion.slice(0, 400) : '', evidence: d.evidence, alternatives: '', decision: d.decision, reason: d.reason, action: d.action, participants: att, status: 'continued', outcome: ''})));
-    const tc = await createMany('tasks', 'K', 3, L.tasks.map(t => base({title: t.title, owner: t.owner, due: t.due, meetingId: mid, cycleId: L.cycleId, phase: c ? Number(c.phase) || null : null, status: 'open'})));
-    S.live = null; store.del('live');
-    toast(`حُفظ الاجتماع ${mid} مع ${dc.length} قرار و${tc.length} مهمة. يظهر المحضر في التقارير.`);
-    S.meetTab = 'meetings'; render(); window.scrollTo(0, 0);
-  } catch (x) { handleDbErr(x); }
-}
-
-
-function accessPanel() {
-  if (!window.burhanIsOwner) return '';
-  const req = (D.access || []).filter(r => r.status === 'pending').sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-  const ok = (D.access || []).filter(r => r.status === 'approved');
-  if (!req.length) return ok.length ? '' : `<section class="panel"><h2>انضمام الفريق</h2><p class="small muted">أرسلي رابط المنصة للمعلمات. كل معلمة تضغط «إنشاء حساب» ببريدها، ويظهر طلبها هنا لتقبليه.</p></section>`;
-  return `<section class="panel hero"><span class="kicker">طلبات انضمام جديدة (${req.length})</span><h2>من تريدين قبوله في الفريق؟</h2><p class="small muted">اقبلي فقط البريد الذي تعرفين صاحبته. بعد القبول تدخل المعلمة وتضغط رمزها (T0x) مرة واحدة.</p>
-  <div class="ledger">${req.map(r => `<div class="rec"><div class="row between"><b dir="ltr">${esc(r.email || r._id)}</b><div class="row"><button class="btn small" data-act="acc-set" data-id="${esc(r._id)}" data-st="approved">قبول</button><button class="btn ghost small" data-act="acc-set" data-id="${esc(r._id)}" data-st="rejected">رفض</button></div></div><div class="meta"><span>طلبت ${esc(fmtDate(r.createdAt))}</span></div></div>`).join('')}</div></section>`;
-}
-document.addEventListener('click', async e => { const b = e.target.closest('button[data-act="acc-set"]'); if (!b || !S.db) return; b.disabled = true;
-  try { await S.db.collection('access').doc(b.dataset.id).update({status: b.dataset.st, decidedAt: new Date().toISOString()}); toast(b.dataset.st === 'approved' ? 'قُبلت. تستطيع الدخول الآن.' : 'رُفض الطلب.'); } catch (x) { handleDbErr(x); b.disabled = false; } });
-
-/* ---- After every render ---- */
-function afterRender() { draftBars(); liveTick(); if (S.view === 'rec' && S.recType === 'evidence' && S.evMode === 'class') bulkInfo(); }
-
-/* ---- Events for the UX layer ---- */
-document.addEventListener('input', e => {
-  const t = e.target; const f = t.closest && t.closest('#view form[data-form]');
-  if (f) saveDraft(f);
-  if (t.matches && t.matches('input[data-score]')) bulkInfo();
-  if (t.dataset && t.dataset.live) { const L = live(); const p = t.dataset.live.split('.'); if (p.length === 2) L[p[0]][p[1]] = t.value; else L[p[0]] = t.value; liveSave(); }
-});
-document.addEventListener('change', e => {
-  const t = e.target; const f = t.closest && t.closest('#view form[data-form]'); if (f) saveDraft(f);
-  if (t.matches && t.matches('[data-live-att]')) { const L = live(); L.attendees = $$('[data-live-att]').filter(x => x.checked).map(x => x.value); L.attTouched = true; liveSave(); }
-  if (t.dataset && t.dataset.live) { const L = live(); L[t.dataset.live] = t.value; liveSave(); }
-});
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Enter' || !e.target.matches || !e.target.matches('input[data-score]')) return;
-  e.preventDefault(); const all = $$('input[data-score]'); const i = all.indexOf(e.target); if (all[i + 1]) { all[i + 1].focus(); all[i + 1].select(); }
-});
-document.addEventListener('click', async e => {
-  const b = e.target.closest('button[data-act]'); if (!b) return; const act = b.dataset.act;
-  if (act === 'menu') { const r = $('.rail'); const open = !r.classList.contains('open'); r.classList.toggle('open', open); $('#menuBtn').setAttribute('aria-expanded', open); window.scrollTo(0, 0); }
-  if (act === 'nav' || act === 'go-rec' || act === 'go-meet' || act === 'go-report') { const r = $('.rail'); if (r) r.classList.remove('open'); }
-  if (act === 'ctx-open') { const w = b.closest('[data-ctxwrap]'); w.querySelector('[data-ctxfull]').hidden = false; w.querySelector('[data-ctxbar]').hidden = true; const sh = w.querySelector(':scope > .stephead'); if (sh) sh.hidden = true; }
-  if (act === 'fill') { const f = b.closest('form'); const el = f && f[b.dataset.name]; if (el) { el.value = b.dataset.v; S.dirty = true; saveDraft(f); const nx = f.observed || f.text; if (nx) nx.focus(); } }
-  if (act === 'draft-restore') { const f = b.closest('form'); restoreDraft(f); b.closest('[data-draftbar]').remove(); toast('استُعيدت المسودة. راجعيها ثم احفظي.'); }
-  if (act === 'draft-drop') { const f = b.closest('form'); dropDraft(f); }
-  if (act === 'ev-mode') { S.evMode = b.dataset.m; render(); }
-  if (act === 'bulk-rows') { const a = $('#bFrom').value.toUpperCase().trim(), z = $('#bTo').value.toUpperCase().trim(); const na = parseInt(a.replace(/\D/g, ''), 10), nz = parseInt(z.replace(/\D/g, ''), 10); if (!(na > 0 && nz >= na && nz - na < 80)) { toast('اكتبي مدى صحيحًا مثل S001 إلى S028 (80 طالبة حدًا أقصى).'); return; } const w = Math.max(3, String(nz).length); S.bulkCodes = Array.from({length: nz - na + 1}, (_, i) => 'S' + pad(na + i, w)); render(); }
-  if (act === 'copy-nudge') { const msg = `السلام عليكن، تذكير لطيف: نحتاج تأملكن القصير بعد اجتماع ${b.dataset.m} في منصة بُرهان (سجّلي ← بعد الاجتماع). ثلاث جمل تكفي: ماذا لاحظتُ، ماذا تعلّمتُ، ماذا سأغيّر. شكرًا لكن. (${b.dataset.who})`; try { await navigator.clipboard.writeText(msg); toast('نُسخت رسالة التذكير. الصقيها في مجموعة الفريق.'); } catch (x) { toast(msg); } }
-  if (act === 'live-start') { const L = live(); L.started = Date.now(); L.stepAt = Date.now(); L.step = 0; liveSave(); render(); }
-  if (act === 'live-step') { const L = live(); L.step = Number(b.dataset.i); L.stepAt = Date.now(); liveSave(); render(); window.scrollTo(0, 0); }
-  if (act === 'live-dec') { const ev = $('#ldEv').value.trim(), dec = $('#ldDec').value.trim(); if (!ev || !dec) { toast('القرار يحتاج دليلًا ونص القرار.'); return; } const L = live(); L.decisions.push({evidence: ev, decision: dec, reason: $('#ldWhy').value.trim(), action: $('#ldAct').value.trim(), subject: $('#ldSubj').value}); liveSave(); render(); toast('أُضيف القرار ' + L.decisions.length + '.'); }
-  if (act === 'live-task') { const ti = $('#ltTitle').value.trim(); if (!ti) { toast('اكتبي المهمة.'); return; } const L = live(); L.tasks.push({title: ti, owner: $('#ltOwner').value, due: $('#ltDue').value || addDays(7)}); liveSave(); render(); toast('أُضيفت المهمة.'); }
-  if (act === 'live-rm') { const L = live(); L[b.dataset.k].splice(Number(b.dataset.i), 1); liveSave(); render(); }
-  if (act === 'live-cancel') { if (S.liveArm !== 1) { S.liveArm = 1; b.textContent = 'اضغطي مرة أخرى لتأكيد الإلغاء'; setTimeout(() => { S.liveArm = 0; }, 4000); return; } S.liveArm = 0; S.live = liveNew(); store.del('live'); render(); toast('أُلغي الاجتماع ولم يُحفظ شيء.'); }
-  if (act === 'live-save') { b.disabled = true; await liveSaveAll(); b.disabled = false; }
-});
-
-/* ---- About: what Burhan is, why, and how to work with it ---- */
-ICONS.about = '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>';
-NAV[0][1].unshift(['about', 'ما هو بُرهان؟']); VIEW_KEYS.unshift('about');
-const ABOUT_FLOW = [
-  ['1', 'نشخّص', 'كل معلمة تجمع عينات من أعمال طالباتها، ونتفق في اجتماع على مشكلة تعلّم واحدة مشتركة بين المقررات.'],
-  ['2', 'نقيس قبل', 'مهمة قصيرة لكل فصل تُصحَّح بمقياس 0–4، فنعرف مستوى الطالبات قبل أي تغيير.'],
-  ['3', 'نصمّم معًا', 'نكتب درسًا بحثيًا متمايزًا (مستويات دعم أ/ب/ج)، ونستعين بالذكاء الاصطناعي ونوثّق ما قبلناه وما غيّرناه ولماذا.'],
-  ['4', 'نلاحظ الطالبات', 'معلمة تدرّس والبقية يلاحظن تعلّم الطالبات (لا أداء المعلمة)، ويسجّلن اللحظات من «ملاحظة حصة».'],
-  ['5', 'نحلّل ونقرّر', 'اجتماع 45 دقيقة: ماذا تقول الأدلة؟ ماذا نغيّر؟ كل قرار مربوط بدليل، وكل قرار له مهمة.'],
-  ['6', 'نعيد ونقيس بعد', 'نطبّق النسخة المحسّنة، ثم نقيس الطالبات مرة أخرى ونقارن بالبداية، وتكتب كل معلمة تأملها.']];
-const ABOUT_WHEN = [
-  ['eye', 'أثناء الحصة', 'وأنتِ تلاحظين درسًا بحثيًا: من الطالبة؟ ماذا حدث؟ أي دعم؟', 'in'],
-  ['notes', 'خارج الحصة', 'وأنتِ تخططين أو تصححين أو تجربين شيئًا في فصلك.', 'out'],
-  ['evidence', 'درجات الطالبات', 'بعد تصحيح مهمة القياس: الفصل كاملًا في جدول واحد.', 'evidence'],
-  ['meetings', 'في الاجتماع', 'القائدة تدير الاجتماع من «اجتماع الآن» فيُحفظ المحضر والقرارات والمهام.', 'meet'],
-  ['refl', 'بعد الاجتماع', 'ثلاث جمل خلال 24 ساعة: ماذا لاحظتُ، ماذا تعلّمتُ، ماذا سأغيّر.', 'after'],
-  ['ai', 'مع الذكاء الاصطناعي', 'عند تصميم الدرس أو تعديله: الصقي ما كتبه AI وما اعتمدتِه، فتظهر الفروق وسببها.', 'ai']];
-V.about = () => `<div><h1>ما هو بُرهان؟</h1><p class="lede">منصة عمل لمجتمع تعلّم مهني من معلمين ومعلمات من تخصصات مختلفة يطوّرون معًا تدريسًا متمايزًا عبر <b>بحث الدرس</b>، بمساندة الذكاء الاصطناعي، ويحفظن كل خطوة دليلًا.</p></div>
-  <section class="panel hero"><span class="kicker">الفكرة في سطرين</span><h2 style="font-size:22px">دليلٌ على التعلّم، وقرارٌ مبنيٌّ على الدليل</h2><p>لا نغيّر الدرس لأننا «نشعر» أنه أفضل، بل لأن أعمال الطالبات تقول ذلك. وبُرهان يجمع هذه الأدلة في مكان واحد: ماذا رأينا، ماذا قررنا، ماذا اقترح الذكاء الاصطناعي وماذا اخترنا، وماذا تغيّر عند الطالبات.</p></section>
-  <section class="panel"><h2>لماذا؟ الأهداف</h2><div class="grid">${[['للطالبات', 'أن تنتقل الطالبة من حل الخطوات إلى تفسيرها ونقلها لموقف جديد، كلٌّ حسب مستواها.'], ['للمعلمات', 'تطوير ممارسات التعليم المتمايز والحكم المهني عبر عمل جماعي حقيقي داخل الصف، لا دورات منفصلة.'], ['للذكاء الاصطناعي', 'استخدامه مساعدًا يقترح، والقرار للمعلمة دائمًا، مع توثيق ما قُبل وما عُدّل وما رُفض.'], ['للمدرسة والبحث', 'نموذج موثّق قابل للتطبيق في مدارس أخرى، وبيانات منظمة تخدم دراسة علمية.']].map(([t, d]) => `<div class="mini"><b>${esc(t)}</b><span class="small">${esc(d)}</span></div>`).join('')}</div></section>
-  <section class="panel"><h2>كيف نعمل؟ دورة بحث الدرس (نحو 6 أسابيع)</h2><p class="small muted">طريقتان تختارهما القائدة عند إنشاء الدورة: «مادة واحدة» (12 مرحلة) أو «متوازية» تمر فيها كل المواد معًا بسبع مراحل. وهذه هي الخطوات الكبرى في الطريقتين. الصفحة الرئيسة تخبركِ دائمًا في أي مرحلة نحن وما المطلوب الآن.</p>
-  <div class="ledger">${ABOUT_FLOW.map(([n, t, d]) => `<div class="rec"><div class="stephead"><span class="n">${n}</span><div><h3>${esc(t)}</h3><p>${esc(d)}</p></div></div></div>`).join('')}</div></section>
-  <section class="panel"><h2>ماذا أسجّل، ومتى؟</h2><div class="grid">${ABOUT_WHEN.map(([ic, t, d, go]) => `<button class="action" data-act="${go === 'ai' ? 'nav' : (go === 'meet' ? 'go-meet' : 'go-rec')}" data-view="${go === 'ai' ? 'ai' : 'meetings'}" data-t="${go === 'meet' ? 'live' : go}"><b>${icon(ic)}${esc(t)}</b><span>${esc(d)}</span></button>`).join('')}</div></section>
-  <section class="panel"><h2>من يفعل ماذا؟</h2><div class="scroll"><table><thead><tr><th>الدور</th><th>ماذا تفعل</th><th>كم من وقتها</th></tr></thead><tbody>
-    <tr><td><b>قائدة المشروع</b></td><td>تدير الاجتماع الأسبوعي من «اجتماع الآن»، تنقل الدورة من مرحلة لأخرى، تقبل انضمام المعلمات، تتابع الفريق من الصفحة الرئيسة، وتصدّر البيانات أسبوعيًا.</td><td>ساعة ونصف أسبوعيًا تقريبًا</td></tr>
-    <tr><td><b>المعلمة المشاركة</b></td><td>تحضر الاجتماع، تجمع أعمال طالباتها وتدخل درجاتها، تلاحظ الدرس البحثي، وتكتب تأملها بعد كل اجتماع.</td><td>45 دقيقة اجتماع + 20–30 دقيقة تسجيل</td></tr>
-    <tr><td><b>معلمة الدرس البحثي</b></td><td>تدرّس الدرس الذي صممه الفريق، وتسجّل ما حدث من «خارج الحصة».</td><td>مرة في كل دورة</td></tr>
-  </tbody></table></div></section>
-  <section class="panel"><h2>قواعد ثابتة</h2><ul class="checklist">${['لا أسماء أبدًا: المعلمات برموز (T01…) والطالبات برموز (S001…). ملف الربط بالأسماء عند القائدة خارج المنصة.', 'نلاحظ تعلّم الطالبات، ولا نقيّم المعلمة. لا تُستخدم أي بيانات في التقييم الوظيفي.', 'الذكاء الاصطناعي يقترح، والمعلمة تقرر. ولا تُدخل فيه أي بيانات تعرّف بطالبة.', 'كل قرار يحتاج دليلًا: رقمًا أو رمز سجل، لا انطباعًا.'].map(t => `<li><span class="tick y" aria-hidden="true">✓</span><span>${esc(t)}</span></li>`).join('')}</ul></section>
-  <section class="panel"><h2>أول خمس دقائق لكِ</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:6px"><li>من الصفحة الرئيسة اضغطي رمزك في «من أنتِ في الفريق؟».</li><li>افتحي «سجّلي» ← «خارج الحصة»، واختاري مقررك وفصلك (يُحفظان بعدها تلقائيًا).</li><li>اكتبي ملاحظة قصيرة عن أعمال طالباتك واحفظي.</li><li>ارجعي للصفحة الرئيسة: ستجدين المرحلة الحالية وخطوتك التالية ومهامك.</li><li>على الجوال: استخدمي الشريط السفلي (الآن · سجّلي · ملاحظة حصة · الاجتماع).</li></ol>
-  <div class="row"><button class="btn" data-act="nav" data-view="home">ابدئي من الصفحة الرئيسة</button><button class="btn ghost" data-act="nav" data-view="playbook">دليل القيادة المفصّل</button></div></section>`;
-function introCard() {
-  if (store.get('introSeen', false)) return '';
-  return `<section class="panel" style="border-color:var(--accent)"><div class="row between"><h2>أهلًا بكِ في بُرهان</h2><button class="btn ghost small" data-act="intro-hide">فهمت، أخفِ هذا</button></div>
-  <p>منصة يعمل فيها فريق من تخصصات مختلفة على <b>بحث الدرس</b>: نشخّص مشكلة تعلّم، نصمّم درسًا متمايزًا معًا، نلاحظ الطالبات، ونقرر بالأدلة، بمساندة الذكاء الاصطناعي.</p>
-  <div class="grid"><div class="mini"><b class="small">ما المطلوب منكِ؟</b><span class="small">اجتماع أسبوعي، وتسجيل قصير: ملاحظاتك، درجات طالباتك، وتأملك بعد الاجتماع.</span></div><div class="mini"><b class="small">أين أبدأ؟</b><span class="small">البطاقة الخضراء أدناه تخبركِ بالمرحلة الحالية وخطوتك التالية.</span></div><div class="mini"><b class="small">الخصوصية</b><span class="small">رموز فقط: T للمعلمات وS للطالبات، بلا أي أسماء.</span></div></div>
-  <div><button class="btn small" data-act="nav" data-view="about">اقرئي الشرح كاملًا (3 دقائق)</button></div></section>`;
-}
-document.addEventListener('click', e => { const b = e.target.closest('button[data-act="intro-hide"]'); if (!b) return; store.set('introSeen', true); render(); });
-
-/* ---- Any school, any subjects: stage, subjects and team size come from project settings ---- */
-const SUBJ_CATALOG = [
-  ['الرياضيات', 'math', 'حل المعادلات', 'حلّت المجموعة المعادلة إجرائيًا، وعند سؤالها «لماذا هذه الخطوة؟» لم تربطها بالمفهوم.'],
-  ['الفيزياء', 'phys', 'تفسير منحنيات السرعة–الزمن', 'قرأت الطالبة الميل رقمًا ولم تفسّره معدل تغيّر للسرعة إلا بعد تلميح.'],
-  ['الكيمياء', 'chem', 'سرعة التفاعل الكيميائي', 'فسّرت الطالبة أثر الحرارة على سرعة التفاعل، لكنها لم تنقل التفسير إلى أثر التركيز.'],
-  ['التقنية الرقمية', 'dt', 'تصميم خوارزمية لحل مشكلة', 'كتبت الطالبة خطوات الخوارزمية صحيحة لكنها لم تفسّر ترتيب الشرط قبل التكرار.'],
-  ['العلوم', '', 'الدورة المائية', 'وصفت الطالبة مراحل الدورة بالترتيب، لكنها لم تفسّر سبب التكاثف.'],
-  ['الأحياء', '', 'انقسام الخلية', 'سمّت المراحل صحيحة، ولم تربط ما يحدث للكروموسومات بالنتيجة.'],
-  ['علم الأرض والفضاء', '', 'الصفائح التكتونية', 'حدّدت نوع الحد بين الصفيحتين، ولم تفسّر سبب الزلازل عنده.'],
-  ['اللغة العربية', '', 'تحليل نص أدبي', 'استخرجت الطالبة الصورة البلاغية، ولم تفسّر أثرها في المعنى.'],
-  ['اللغة الإنجليزية', '', 'Reading for main idea', 'اختارت الطالبة الفكرة الرئيسة صحيحة، ولم تبرّرها بدليل من النص.'],
-  ['الدراسات الإسلامية', '', 'استنباط حكم من دليل', 'ذكرت الطالبة الحكم، ولم توضّح وجه الدلالة من الدليل.'],
-  ['الدراسات الاجتماعية', '', 'قراءة خريطة', 'حدّدت الموقع على الخريطة، ولم تفسّر أثره على النشاط الاقتصادي.'],
-  ['المهارات الحياتية', '', 'إدارة الميزانية', 'حسبت الطالبة المصروفات، ولم تبرّر أولويات الإنفاق.'],
-  ['التفكير الناقد', '', 'تقييم حجة', 'حدّدت الطالبة النتيجة، ولم تميّز المقدمات الضعيفة.'],
-  ['التربية الفنية', '', 'تحليل عمل فني', 'وصفت الألوان المستخدمة، ولم تربطها بالفكرة التي يعبّر عنها العمل.'],
-  ['التربية البدنية', '', 'مهارة التمرير', 'أدّت المهارة صحيحة، ولم تفسّر متى تختار التمرير القصير.']];
-const STAGES = ['ابتدائية', 'متوسطة', 'ثانوية'];
-const DEFAULT_SUBJ = ['التقنية الرقمية', 'الرياضيات', 'الكيمياء', 'الفيزياء'];
-const projSubjects = () => { const l = D.settings.subjects; return Array.isArray(l) && l.length ? l : DEFAULT_SUBJ; };
-let subjSig = '';
-function applySubjects() {
-  const list = projSubjects(); const sig = list.join('|'); if (sig === subjSig) return; subjSig = sig;
-  let slot = 0; const fixed = new Set(['dt', 'math', 'chem', 'phys']);
-  const out = list.map(n => { const c = SUBJ_CATALOG.find(x => x[0] === n); let k = c && c[1] && fixed.has(c[1]) ? c[1] : ''; if (!k) { slot = slot % 8 + 1; k = 'p' + slot; } return {k, n, ex: c ? c[2] : 'عنوان الدرس', obs: c ? c[3] : 'وصفت الطالبة ما فعلته، ولم تفسّر لماذا اختارت هذه الطريقة.'}; });
-  SUBJ.length = 0; out.forEach(x => SUBJ.push(x));
-  Object.keys(SUBJ_BY_NAME).forEach(k => delete SUBJ_BY_NAME[k]); SUBJ.forEach(x => { SUBJ_BY_NAME[x.n] = x; });
-}
-const renderNavCore = renderNav;
-renderNav = function () { applySubjects(); renderNavCore(); };
-function projectWizard() {
-  if (!S.canEdit && !window.burhanIsOwner) return '';
-  const st = D.settings; const chosen = new Set(projSubjects()); const extra = projSubjects().filter(n => !SUBJ_CATALOG.some(c => c[0] === n));
-  return `<form class="panel hero" data-form="project"><span class="kicker">إعداد المشروع لمدرستك</span><h2>المرحلة والمواد وعدد المشاركين</h2>
-  <p class="small muted">بُرهان يعمل مع أي مرحلة وأي تخصصات. ما تختارينه هنا يظهر في كل الصفحات: اختيار المادة في التسجيل، والألوان، والتقارير، واكتمال المراحل.</p>
-  <div><div class="hint" style="margin-bottom:6px">المرحلة</div>${chipRadios('stage', STAGES, st.stage || 'ثانوية')}</div>
-  <div class="grid">${field('الصف المستهدف', inp('grade', st.grade || '', 'placeholder="مثال: الأول الثانوي"'))}${field('عدد المشاركين في الفريق', inp('teamSize', st.teamSize || D.team.length || 4, 'type="number" min="2" max="30" inputmode="numeric"'), 'تُنشأ رموز T01، T02… بهذا العدد')}</div>
-  <div><div class="hint" style="margin-bottom:6px">المواد المشاركة (اختاري ما ينطبق)</div><div class="checks">${SUBJ_CATALOG.map(([n]) => `<label><input type="checkbox" name="subj" value="${esc(n)}"${chosen.has(n) ? ' checked' : ''}>${esc(n)}</label>`).join('')}${extra.map(n => `<label><input type="checkbox" name="subj" value="${esc(n)}" checked>${esc(n)}</label>`).join('')}</div></div>
-  ${field('مادة غير موجودة في القائمة؟', inp('customSubj', '', 'placeholder="اكتبيها، ويمكن أكثر من مادة بينها فاصلة"'))}
-  <div class="row"><button class="btn" type="submit">حفظ إعداد المشروع</button><span class="small muted">بعد الحفظ حدّدي تخصص كل رمز من جدول «الفريق» أدناه.</span></div></form>`;
-}
-document.addEventListener('submit', async e => {
-  const f = e.target.closest('form[data-form="project"]'); if (!f) return; e.preventDefault(); if (!S.db) return;
-  const subj = $$('input[name=subj]:checked', f).map(x => x.value).concat(String(f.customSubj.value || '').split(/[،,]/).map(x => x.trim()).filter(Boolean));
-  const list = [...new Set(subj)]; if (list.length < 1) { toast('اختاري مادة واحدة على الأقل.'); return; }
-  const size = Math.min(30, Math.max(2, Number(f.teamSize.value) || 4)); const stage = (f.querySelector('input[name=stage]:checked') || {}).value || 'ثانوية';
-  const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
-  try {
-    await S.db.doc('config/project').set(Object.assign({}, D.settings, {stage, grade: f.grade.value.trim(), subjects: list, teamSize: size, updatedAt: new Date().toISOString()}));
-    const have = new Set(D.team.map(m => m.code)); let added = 0;
-    for (let i = 1; i <= size; i++) { const code = 'T' + pad(i, 2); if (have.has(code)) continue; await S.db.collection('team').doc(code).set({code, discipline: list[(i - 1) % list.length], role: 'معلمة مشاركة', status: 'نشطة', joined: today(), userId: ''}); added++; }
-    S.dirty = false; toast(`حُفظ إعداد المشروع: ${list.length} مادة${added ? ' · أُضيف ' + added + ' رمز جديد' : ''}.`);
-  } catch (x) { handleDbErr(x); } finally { btn.disabled = false; }
-});
-
-/* cycle form: show the right subject picker for the chosen way of working */
-document.addEventListener('change', e => { const t = e.target; if (!t.matches || !t.matches('input[name=cyMode]')) return; const f = t.closest('form'); const par = t.value === 'parallel'; f.querySelector('[data-mode-par]').hidden = !par; f.querySelector('[data-mode-single]').hidden = par; });
-
-/* parallel cycle: where each subject stands, at a glance */
-const SG_COLS = [
-  ['قياس قبلي', (c, sj) => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Baseline')],
-  ['V1', (c, sj) => inCyS(D.lessons, c, sj).some(l => (l.version || 1) === 1)],
-  ['ملاحظة V1', (c, sj) => inCyS(D.notes, c, sj).filter(n => n.context === 'in').length >= 3],
-  ['بعد الحصة', (c, sj) => inCyS(D.notes, c, sj).some(n => n.kind === OUT_KINDS[2])],
-  ['قرار', (c, sj) => inCy(D.decisions, c).some(d => d.evidence && d.subject === sj)],
-  ['V2', (c, sj) => inCyS(D.lessons, c, sj).some(l => (l.version || 1) >= 2)],
-  ['قياس بعدي', (c, sj) => inCyS(D.evidence, c, sj).some(e => e.timePoint === 'Post')]];
-function subjGrid(c) {
-  const mine = mySubject(); const subs = cySubj(c);
-  const rows = subs.map(sj => [sj, SG_COLS.map(([, fn]) => fn(c, sj))]);
-  const myRow = rows.find(r => r[0] === mine); const myNext = myRow ? SG_COLS[myRow[1].indexOf(false)] : null;
-  return `<div class="mini"><b class="small">أين وصلت كل مادة؟</b>${myRow ? `<span class="small">مادتك (${esc(mine)}): ${myNext ? 'الخطوة الناقصة التالية <b>' + esc(myNext[0]) + '</b>' : 'كل خطواتها مكتملة ✓'}</span>` : ''}
-  <div class="scroll"><table class="sgrid"><thead><tr><th>المادة</th>${SG_COLS.map(([l]) => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>${rows.map(([sj, oks]) => `<tr class="${sj === mine ? 'mine' : ''}"><td>${subjChip(sj)}</td>${oks.map(ok => `<td>${ok ? '<span aria-label="مكتمل">✓</span>' : '<span class="muted" aria-label="لم يكتمل">○</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+    await db.collection('projects').doc(pid).set(doc);
+    const pr = db.collection('projects').doc(pid);
+    await pr.collection('members').doc(ME.uid).set({uid: ME.uid, email: ME.email, name: ME.name || ME.email, roles: myRoles, school: d.org || '', joinedAt: nowIso()});
+    for (const t of team) await pr.collection('invites').doc(t.email).set({email: t.email, name: t.name || '', roles: t.roles, school: t.school || '', invitedBy: ME.uid, createdAt: nowIso()});
+    const n = Math.max(1, Math.min(12, Number(d.cycles) || 1));
+    for (let k = 1; k <= n; k++) await pr.collection('cycles').doc('c' + k).set({n: k, title: '', status: k === 1 ? 'active' : 'planned', topic: '', createdBy: ME.uid, createdAt: nowIso()});
+    S.creating = false; S.pid = pid; store.set('pid', pid); S.subKey = '';
+    const found = S.projects.find(p => p.id === pid); if (found) selectProject(pid);
+    return pid;
+  } catch (x) { S.creating = false; dbErr(x); return null; }
 }
 
 /* =========================================================
-   9. Boot
+   Teams, roles and invitations; project settings
    ========================================================= */
-render();
-(async () => {
-  const cl = window.claude; if (!cl || !cl.use) { S.err = 'قاعدة البيانات غير متاحة خارج Claude.'; renderNav(); return; }
-  const [db, user, sample, downloads, assets] = await Promise.all(['db','user','sample','downloads','assets'].map(n => cl.use(n).catch(() => null)));
-  S.db = db; S.user = user; S.sample = sample; S.downloads = downloads; S.assets = assets;
-  if (user) { try { S.uid = await user.id(); S.canEdit = await user.canEdit(); } catch (x) {} }
-  if (!db) { S.err = 'قاعدة البيانات غير متاحة في هذا العرض؛ يمكنك التصفح فقط.'; render(); return; }
-  const accept = (key, val) => { const s = JSON.stringify(val); if (S.sig[key] === s) return; S.sig[key] = s; schedule(); };
-  db.doc('config/project').onSnapshot(s => { D.settings = s.exists ? s.data() : {}; accept('settings', D.settings); }, () => {});
-  COLLS.forEach(c => db.collection(c).limit(1000).onSnapshot(snap => { D[c] = snap.docs.map(d => Object.assign({_id: d.id}, d.data())); accept(c, D[c]); }, err => { if (err && err.code === 'revoked') { S.err = 'انتهت صلاحية الوصول.'; renderNav(); } }));
-  render();
+V.team = () => {
+  if (!S.P) return head('الفرق') + needProject();
+  const mgr = isManager();
+  const others = S.projects.filter(p => p.id !== S.pid);
+  return `${head('الفرق', 'الفريق هو أعضاء المشروع وأدوارهم. يمكن للشخص أن يحمل أكثر من دور، وأن يكون في أكثر من فريق بدور مختلف في كل واحد. ويمكن أن يجمع الفريق أعضاء من مدارس مختلفة.')}
+  <section class="panel"><h2>فريق «${esc(S.P.name)}» (${D.members.length})</h2>
+  <div class="scroll"><table><thead><tr><th>العضو</th><th>المدرسة</th><th>الأدوار</th>${mgr ? '<th></th>' : ''}</tr></thead><tbody>${D.members.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(m => `<tr><td><b>${esc(m.name || m.email)}</b><br><span class="tiny muted" dir="ltr">${esc(m.email || '')}</span></td><td>${esc(m.school || '—')}</td>
+    <td>${mgr ? `<form data-form="roles" data-id="${esc(m.id)}" class="rolechips">${checks('roles', ROLES, m.roles)}<button class="btn small" type="submit">حفظ الأدوار</button></form>` : esc((m.roles || []).map(r => ROLE[r]).join('، '))}</td>
+    ${mgr ? `<td>${m.id !== S.P.createdBy && m.id !== ME.uid ? `<button class="btn ghost small" data-act="rmmember" data-id="${esc(m.id)}">إزالة</button>` : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div></section>
+  ${mgr ? `<section class="panel"><h2>دعوة عضو</h2><p class="small muted">تصل الدعوة عندما ينشئ العضو حسابه في بُرهان بالبريد نفسه، وتظهر له في لوحة التحكم ليقبلها.</p>
+    <form data-form="invite" class="stepsec"><div class="grid">${field('الاسم', inp('name', ''))}${field('البريد', inp('email', '', 'type="email" required dir="ltr"'))}${field('المدرسة أو الجهة', inp('school', ''))}</div>${field('الأدوار', checks('roles', ROLES, ['teacher']))}<div><button class="btn" type="submit">إرسال الدعوة</button></div></form>
+    ${D.invites.length ? `<h3>دعوات لم تُقبل بعد</h3><div class="ledger">${D.invites.filter(i => (S.P.invitedEmails || []).includes(i.email)).map(i => `<div class="rec"><div class="row between"><span><b>${esc(i.name || '')}</b> <span dir="ltr" class="small">${esc(i.email)}</span></span><button class="btn ghost small" data-act="rminvite" data-id="${esc(i.id)}">إلغاء الدعوة</button></div><div class="meta">${esc((i.roles || []).map(r => ROLE[r]).join('، '))}${i.school ? ' · ' + esc(i.school) : ''}</div></div>`).join('') || '<span class="small muted">لا شيء.</span>'}</div>` : ''}</section>` : ''}
+  ${others.length ? `<section class="panel"><h2>فرقك الأخرى</h2><div class="ledger">${others.map(p => `<div class="rec"><div class="row between"><b>${esc(p.name)}</b><button class="btn ghost small" data-act="openproj" data-id="${esc(p.id)}">فتح</button></div><div class="meta">${(p.memberUids || []).length} عضو · ${esc((p.subjects || []).join('، '))}</div></div>`).join('')}</div></section>` : ''}
+  <section class="panel"><h2>ماذا يفعل كل دور؟</h2><div class="scroll"><table><tbody>
+    <tr><td><b>قائد الفريق</b></td><td>يدير المشروع وإعداداته والدعوات، ويعتمد قرارات التحسين.</td></tr>
+    <tr><td><b>الميسّر</b></td><td>يدير الاجتماعات ويحافظ على التركيز على أدلة التعلم، وله صلاحيات الإدارة.</td></tr>
+    <tr><td><b>المعلم المنفّذ</b></td><td>ينفّذ الدرس البحثي ويكتب نسخه.</td></tr>
+    <tr><td><b>خبير المحتوى</b></td><td>يتحقق من دقة المحتوى وتدرّج المفاهيم.</td></tr>
+    <tr><td><b>الملاحِظ</b></td><td>يوثّق تعلّم المتعلمين أثناء الدرس: الدليل المباشر منفصلًا عن التفسير.</td></tr>
+    <tr><td><b>المراجع</b></td><td>يراجع الخطط والقرارات والتقارير.</td></tr>
+    <tr><td><b>الباحث</b></td><td>يعمل في «مساحة الباحث» إذا فُعّلت، ولا يصل إلا إلى البيانات المصرّح بها.</td></tr></tbody></table></div></section>`;
+};
+FORM.roles = async (o, f) => {
+  const id = f.dataset.id; const roles = o.roles || []; if (!roles.length) { toast('اختر دورًا واحدًا على الأقل.'); return false; }
+  if (!(await updDoc('members', id, {roles}))) return false;
+  const P = S.P; const isMgr = roles.some(r => MANAGER_ROLES.includes(r)) || id === P.createdBy;
+  const up = {managerUids: isMgr ? uniq((P.managerUids || []).concat(id)) : (P.managerUids || []).filter(x => x !== id), researcherUids: roles.includes('researcher') ? uniq((P.researcherUids || []).concat(id)) : (P.researcherUids || []).filter(x => x !== id)};
+  if (!up.managerUids.length) { toast('يجب أن يبقى في المشروع مدير واحد على الأقل.'); return false; }
+  await updProject(up); toast('حُفظت الأدوار.');
+};
+FORM.invite = async o => {
+  const em = String(o.email || '').toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('اكتب بريدًا صحيحًا.'); return false; }
+  if (!(o.roles || []).length) { toast('اختر دورًا واحدًا على الأقل.'); return false; }
+  if (D.members.some(m => m.email === em)) { toast('هذا العضو موجود في الفريق.'); return false; }
+  try { await coll('invites').doc(em).set({email: em, name: o.name || '', roles: o.roles, school: o.school || '', invitedBy: ME.uid, createdAt: nowIso()}); }
+  catch (x) { dbErr(x); return false; }
+  await updProject({invitedEmails: uniq((S.P.invitedEmails || []).concat(em))}); toast('أُرسلت الدعوة إلى ' + em);
+};
+ACT.rminvite = async b => { const id = b.dataset.id; await delDoc('invites', id); await updProject({invitedEmails: (S.P.invitedEmails || []).filter(e => e !== id)}); toast('أُلغيت الدعوة.'); };
+ACT.rmmember = async b => {
+  const id = b.dataset.id; if (b.dataset.arm !== '1') { b.dataset.arm = '1'; b.textContent = 'اضغط مرة أخرى للتأكيد'; return; }
+  await delDoc('members', id);
+  await updProject({memberUids: (S.P.memberUids || []).filter(x => x !== id), managerUids: (S.P.managerUids || []).filter(x => x !== id), researcherUids: (S.P.researcherUids || []).filter(x => x !== id)});
+  toast('أُزيل العضو من المشروع.');
+};
+
+/* ---------- settings (managers) ---------- */
+V.settings = () => {
+  if (!S.P) return head('إعدادات المشروع') + needProject();
+  if (!isManager()) return head('إعدادات المشروع') + empty('الإعدادات لقائد الفريق والميسّر.');
+  const P = S.P; const g = P.goals || {}; const pr = P.problem || {}; const sc = P.schedule || {};
+  const t = curTab('settings', 'general');
+  let body = '';
+  if (t === 'general') body = `<form data-form="setGeneral" class="panel"><div class="grid wide">${field('اسم المشروع', inp('name', P.name, 'required'))}${field('المؤسسة التعليمية', inp('org', P.org))}</div>
+    <div class="grid">${field('المرحلة', sel('stage', STAGES, P.stage))}${field('الصف', inp('grade', P.grade))}${field('العام الدراسي', inp('year', P.year))}${field('مدة المشروع', inp('duration', P.duration))}</div>
+    ${field('المواد أو المجالات', inp('subjects', (P.subjects || []).join('، ')), 'افصل بينها بفاصلة')}<div><button class="btn" type="submit">حفظ</button></div></form>`;
+  if (t === 'goal') body = `<form data-form="setGoal" class="panel">${field('الهدف البعيد للتعلم', area('longTerm', g.longTerm, 'rows="3"'))}<div class="grid wide">${field('الأفكار الكبرى', area('bigIdeas', g.bigIdeas, 'rows="3"'))}${field('عادات التفكير', area('habits', g.habits, 'rows="3"'))}</div>${field('مؤشرات النجاح', area('successIndicators', g.successIndicators, 'rows="3"'))}
+    <hr style="border:0;border-top:1px solid var(--line)"><h3>مشكلة التعلم</h3>${field('المشكلة', area('statement', pr.statement, 'rows="3"'))}<div class="grid wide">${field('الأدلة', area('evidence', pr.evidence, 'rows="3"'))}${field('المتعلمون المستهدفون', area('learners', pr.learners, 'rows="3"'))}</div>${field('أسئلة الفريق', area('questions', pr.questions, 'rows="3"'))}<div><button class="btn" type="submit">حفظ</button></div></form>`;
+  if (t === 'schedule') body = `<form data-form="setSchedule" class="panel"><div class="grid">${field('عدد الحصص الأسبوعية', inp('lessonsPerWeek', sc.lessonsPerWeek, 'type="number" min="0"'))}${field('مدة الحصة (دقيقة)', inp('lessonMinutes', sc.lessonMinutes, 'type="number" min="0"'))}${field('تاريخ البدء', inp('startDate', sc.startDate, 'type="date"'))}</div>
+    <div class="grid">${field('يوم الاجتماع', inp('meetingDay', sc.meetingDay))}${field('وقت الاجتماع', inp('meetingTime', sc.meetingTime))}${field('مدة الاجتماع (دقيقة)', inp('meetingMinutes', sc.meetingMinutes, 'type="number" min="0"'))}</div>${field('الموارد المتاحة', area('resources', sc.resources, 'rows="2"'))}<div><button class="btn" type="submit">حفظ</button></div></form>`;
+  if (t === 'modules') body = `<form data-form="setModules" class="panel"><p class="small muted">تفعيل وحدة أو إيقافها يخص هذا المشروع وحده. إيقاف وحدة يخفي صفحاتها وحقولها، ولا يحذف بياناتها.</p>
+    <div class="modgrid">${MODULES.map(([k, n, ds]) => `<label><input type="checkbox" name="modules" value="${k}"${mod(k) ? ' checked' : ''}><span><b>${esc(n)}</b><small>${esc(ds)}</small></span></label>`).join('')}</div>
+    ${mod('research') ? `<div class="mini"><b>ما الذي يصل إليه الباحث من بيانات المشروع؟</b><span class="small muted">مساحة الباحث منفصلة. ولا تدخل فيها بيانات الفريق إلا ما تصرّح به هنا.</span>${checks('share', [['lessons', 'خطط الدروس'], ['observations', 'الملاحظات'], ['decisions', 'القرارات'], ['meetings', 'محاضر الاجتماعات'], ['ai', 'سجل الذكاء الاصطناعي']], Object.keys(P.researchShare || {}).filter(k => P.researchShare[k]))}</div>` : ''}
+    <div><button class="btn" type="submit">حفظ</button></div></form>`;
+  if (t === 'obs') body = `<form data-form="setObs" class="panel">${field('مؤشرات الملاحظة', area('indicators', (P.indicators || []).join('\n'), 'rows="8"'), 'مؤشر في كل سطر. تظهر في بطاقة الملاحظة وفي التحليلات.')}
+    ${mod('customObs') ? field('حقول إضافية في بطاقة الملاحظة', area('customObsFields', (P.customObsFields || []).join('\n'), 'rows="4" placeholder="مثال: الأداة المستخدمة\nزمن الاستجابة"'), 'حقل في كل سطر') : '<p class="small muted">لإضافة حقول خاصة بمادتكم في بطاقة الملاحظة فعّل وحدة «أدوات ملاحظة مخصصة».</p>'}<div><button class="btn" type="submit">حفظ</button></div></form>`;
+  if (t === 'danger') body = `<section class="panel"><h2>حذف المشروع</h2><p class="small">يحذف وثيقة المشروع فيختفي من قوائم الأعضاء. ${P.createdBy === ME.uid ? '' : 'متاح لمنشئ المشروع فقط.'}</p>${P.createdBy === ME.uid ? '<div><button class="btn ghost" data-act="delproject">حذف المشروع</button></div>' : ''}</section>`;
+  return `${head('إعدادات المشروع')}${tabs('settings', [['general', 'البيانات العامة'], ['goal', 'الهدف والمشكلة'], ['schedule', 'التخطيط الزمني'], ['modules', 'الوحدات الاختيارية'], ['obs', 'مؤشرات الملاحظة'], ['danger', 'حذف']])}${body}`;
+};
+FORM.setGeneral = async o => { if (!o.name) { toast('اكتب اسم المشروع.'); return false; } if (await updProject({name: o.name, org: o.org, stage: o.stage, grade: o.grade, year: o.year, duration: o.duration, subjects: lines(o.subjects)})) toast('حُفظ.'); };
+FORM.setGoal = async o => { if (await updProject({goals: {longTerm: o.longTerm, bigIdeas: o.bigIdeas, habits: o.habits, successIndicators: o.successIndicators}, problem: {statement: o.statement, evidence: o.evidence, learners: o.learners, questions: o.questions}})) toast('حُفظ الهدف والمشكلة.'); };
+FORM.setSchedule = async o => { if (await updProject({schedule: Object.assign({}, S.P.schedule || {}, o)})) toast('حُفظ التخطيط الزمني.'); };
+FORM.setModules = async o => {
+  const m = {}; MODULES.forEach(([k]) => { m[k] = (o.modules || []).includes(k); });
+  const share = {}; ['lessons', 'observations', 'decisions', 'meetings', 'ai'].forEach(k => { share[k] = (o.share || []).includes(k); });
+  const up = {modules: m, framework: m.solo ? 'solo' : (S.P.framework === 'solo' ? 'none' : (S.P.framework || 'none'))};
+  if (o.share) up.researchShare = share;
+  if (await updProject(up)) toast('حُفظت الوحدات.');
+};
+FORM.setObs = async o => { const ind = String(o.indicators || '').split('\n').map(x => x.trim()).filter(Boolean); if (await updProject({indicators: ind.length ? ind : DEFAULT_INDICATORS.slice(), customObsFields: String(o.customObsFields || '').split('\n').map(x => x.trim()).filter(Boolean)})) toast('حُفظت مؤشرات الملاحظة.'); };
+ACT.delproject = async b => { if (b.dataset.arm !== '1') { b.dataset.arm = '1'; b.textContent = 'اضغط مرة أخرى لتأكيد الحذف النهائي'; return; } try { await pref().delete(); toast('حُذف المشروع.'); S.pid = ''; store.set('pid', ''); go('dash'); } catch (x) { dbErr(x); } };
+
+/* =========================================================
+   The Lesson Study cycle: schedule, research lessons,
+   observation of learning, and improvement decisions
+   ========================================================= */
+const shortId = (p, id) => p + '-' + String(id || '').slice(-4).toUpperCase();
+const lessonLabel = l => l ? `${l.title || 'درس بلا عنوان'} · V${l.version || 1}` : '—';
+const lessonsOfCycle = c => D.lessons.filter(l => !c || l.cycleId === c.id).sort((a, b) => String(a.familyId).localeCompare(String(b.familyId)) || (a.version || 1) - (b.version || 1));
+const memberOpts = () => D.members.map(m => [m.id, m.name || m.email]);
+
+/* ---------- schedule ---------- */
+V.schedule = () => {
+  if (!S.P) return head('الجدول التنفيذي') + needProject();
+  const sc = S.P.schedule || {}; const cycles = D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)); const c = curCycle();
+  const mgr = isManager();
+  return `${head('الجدول التنفيذي', 'دورات بحث الدرس وخطواتها التسع. تكتمل كل خطوة تلقائيًا عندما يوجد دليلها في المنصة، وتظهر الخطوة التالية في لوحة التحكم.')}
+  <section class="panel"><h2>إيقاع المشروع</h2><div class="kpis"><div class="kpi"><b>${esc(sc.lessonsPerWeek || '—')}</b><span>حصة أسبوعيًا</span></div><div class="kpi"><b>${esc(sc.lessonMinutes || '—')}</b><span>دقيقة للحصة</span></div><div class="kpi"><b>${esc(sc.meetingDay || '—')}</b><span>يوم الاجتماع ${esc(sc.meetingTime || '')}</span></div><div class="kpi"><b>${cycles.length}</b><span>دورة</span></div></div>${mgr ? '<div><button class="btn ghost small" data-act="go" data-v="settings">تعديل الإيقاع</button></div>' : ''}</section>
+  <section class="panel"><div class="row between"><h2>الدورات</h2>${mgr ? '<button class="btn small" data-act="addcycle">دورة جديدة</button>' : ''}</div>
+  <div class="ledger">${cycles.map(x => { const st = stepState(x); const n = st.filter(s => s.ok).length; return `<div class="rec${c && x.id === c.id ? ' mine' : ''}"><div class="row between"><b>${esc(cycleLabel(x))}</b><span class="row">${pill({planned: 'مخطط لها', active: 'جارية', closed: 'مغلقة'}[x.status || 'planned'] || '', x.status === 'active' ? 'good' : '')}${c && x.id === c.id ? '' : `<button class="btn ghost small" data-act="pickcycle" data-id="${esc(x.id)}">عرض</button>`}</span></div>
+    <div class="meta"><span>${esc(x.topic || 'بلا موضوع بعد')}</span><span>الدرس البحثي: ${esc(fmtDate(x.lessonDate))}</span><span>المنفّذ: ${esc(x.teacherUid ? memberName(x.teacherUid) : '—')}</span></div>
+    <div class="row"><div class="bar" style="flex:1"><i style="width:${Math.round(n / STEPS.length * 100)}%"></i></div><span class="small muted">${n} من ${STEPS.length}</span></div></div>`; }).join('') || empty('لا دورات بعد.')}</div></section>
+  ${c ? cyclePanel(c) : ''}`;
+};
+function cyclePanel(c) {
+  const st = stepState(c);
+  return `<section class="panel hero"><h2>${esc(cycleLabel(c))}</h2>${stepChips(c)}
+  <div class="scroll"><table><thead><tr><th>#</th><th>الخطوة</th><th>ما المطلوب</th><th>الحالة</th><th></th></tr></thead><tbody>${st.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.s.n)}</b></td><td class="small">${esc(x.s.d)}</td><td>${x.ok ? pill('مكتملة', 'good') : pill(x.s.optional ? 'اختيارية' : 'لم تكتمل', x.s.optional ? '' : 'warn')}</td><td><button class="btn ghost small" data-act="go" data-v="${x.s.go}">افتح</button></td></tr>`).join('')}</tbody></table></div>
+  <form data-form="cycle" data-id="${esc(c.id)}" class="stepsec"><h3>بيانات الدورة</h3>
+    <div class="grid">${field('عنوان الدورة', inp('title', c.title))}${field('موضوع الدرس البحثي', inp('topic', c.topic))}${field('تاريخ الدرس البحثي', inp('lessonDate', c.lessonDate, 'type="date"'))}${field('المعلم المنفّذ', sel('teacherUid', memberOpts(), c.teacherUid, '—'))}</div>
+    ${field('الملاحِظون', checks('observers', memberOpts(), c.observers))}
+    ${field('دراسة المحتوى', area('contentStudy', c.contentStudy, 'rows="4" placeholder="المفاهيم الأساسية، والمتطلبات السابقة، وكيف تتدرج الفكرة في المنهج، والأخطاء الشائعة"'), 'هذا حقل خطوة «دراسة المحتوى».')}
+    <label class="checks"><label><input type="checkbox" name="skipReteach" value="1"${c.skipReteach ? ' checked' : ''}>لن نعيد تدريس الدرس في هذه الدورة</label></label>
+    ${isManager() ? field('حالة الدورة', sel('status', [['planned', 'مخطط لها'], ['active', 'جارية'], ['closed', 'مغلقة']], c.status || 'planned')) : ''}
+    <div><button class="btn" type="submit">حفظ بيانات الدورة</button></div></form></section>`;
+}
+ACT.pickcycle = b => { S.cycleId = b.dataset.id; store.set('cycle', S.cycleId); render(); };
+ACT.addcycle = async () => { const n = Math.max(0, ...D.cycles.map(c => c.n || 0)) + 1; const id = await addDoc('cycles', {n, title: '', status: 'planned', topic: ''}, 'c' + n + '_' + Date.now().toString(36)); if (id) { S.cycleId = id; toast('أُضيفت الدورة ' + n); } };
+FORM.cycle = async (o, f) => { const data = {title: o.title, topic: o.topic, lessonDate: o.lessonDate, teacherUid: o.teacherUid, observers: o.observers || [], contentStudy: o.contentStudy, skipReteach: (o.skipReteach || []).length > 0}; if (o.status) data.status = o.status; if (await updDoc('cycles', f.dataset.id, data)) toast('حُفظت بيانات الدورة.'); };
+
+/* ---------- research lessons ---------- */
+const LESSON_FIELDS = [
+  ['topic', 'الموضوع', 'input'], ['concepts', 'المفاهيم', 'area'], ['prerequisites', 'المتطلبات السابقة', 'area'],
+  ['outcomes', 'نواتج التعلم', 'area', 'ابدأ بفعل قابل للملاحظة: يفسّر، يقارن، يبرّر، يصمّم'],
+  ['tasks', 'المهام', 'area'], ['questionsText', 'الأسئلة', 'area', 'الأسئلة التي تُطرح أثناء الدرس'],
+  ['expected', 'الاستجابات المتوقعة', 'area', 'كيف نتوقع أن يفكر المتعلمون؟'], ['misconceptions', 'الأخطاء الشائعة', 'area'],
+  ['resources', 'الموارد', 'area'], ['time', 'الزمن', 'input', 'توزيع زمن الحصة'], ['evidence', 'أدلة التعلم', 'area', 'ما الذي سنجمعه لنعرف أن المتعلمين تعلّموا؟']];
+V.lessons = () => {
+  if (!S.P) return head('الدروس البحثية') + needProject();
+  if (S.lessonEdit) return lessonEditor();
+  if (S.compare) return lessonCompare();
+  const c = curCycle(); const list = lessonsOfCycle(c);
+  const fams = {}; list.forEach(l => { (fams[l.familyId || l.id] = fams[l.familyId || l.id] || []).push(l); });
+  return `${head('الدروس البحثية', 'خطة الدرس البحثي ونسخها. كل نسخة جديدة تحفظ ما تغيّر ولماذا، وتُربط بقرار التحسين الذي أدى إليها. البنية نفسها تصلح لأي مادة.')}
+  <section class="panel"><div class="row between">${field('الدورة', `<select data-change="lcycle">${opts(D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).map(x => [x.id, cycleLabel(x)]), c && c.id)}</select>`)}<button class="btn" data-act="newlesson">درس بحثي جديد</button></div>
+  <div class="ledger">${Object.values(fams).map(vs => { const last = vs[vs.length - 1]; return `<div class="rec"><div class="row between"><b style="font-size:17px">${esc(last.title || 'بلا عنوان')}</b><span class="row">${vs.map(v => `<button class="btn ghost small" data-act="editlesson" data-id="${esc(v.id)}">V${v.version || 1}</button>`).join('')}</span></div>
+    <div class="meta"><span>${esc(last.topic || '')}</span><span>آخر تعديل ${esc(fmtDate(last.updatedAt || last.createdAt))}</span>${vs.length > 1 ? `<button class="btn ghost small" data-act="compare" data-id="${esc(last.id)}">قارن النسخ</button>` : ''}</div></div>`; }).join('') || empty('لا دروس بحثية في هذه الدورة بعد.')}</div></section>`;
+};
+ACT.lcycle = el => { S.cycleId = el.value; store.set('cycle', S.cycleId); render(); };
+ACT.newlesson = () => { const c = curCycle(); if (!c) { toast('أنشئ دورة أولًا من «الجدول التنفيذي».'); return; } S.lessonEdit = {id: '', data: {cycleId: c.id, version: 1, title: c.topic || ''}}; render(); };
+ACT.editlesson = b => { const l = D.lessons.find(x => x.id === b.dataset.id); if (l) { S.lessonEdit = {id: l.id, data: l}; render(); window.scrollTo(0, 0); } };
+ACT.closelesson = () => { S.lessonEdit = null; S.compare = null; S.dirty = false; render(); };
+ACT.compare = b => { S.compare = b.dataset.id; render(); };
+function soloBlock(l) {
+  const s = l.solo || {}; const qs = (s.questions || []).concat([{}, {}, {}]).slice(0, Math.max(4, (s.questions || []).length + 2));
+  const lv = SOLO.slice(1).map(x => [x[0], x[0] + ' · ' + x[1]]);
+  const aligned = soloAlignment(l);
+  return `<section class="stepsec"><div class="stephead"><span class="n">S</span><div><h3>تصميم وفق SOLO</h3><p>حدّد مستوى الهدف، وصنّف كل سؤال بمستواه، واختر مهمة ختامية بالمستوى نفسه. تظهر هذه الحقول لأن وحدة SOLO مفعّلة.</p></div></div>
+    <div class="grid">${field('مستوى SOLO الذي يستهدفه الناتج', sel('soloOutcome', lv, s.outcomeLevel || '3'))}${field('المهمة الختامية (نشاط آخر الحصة)', inp('soloExit', s.exitTask))}${field('مستوى المهمة الختامية', sel('soloExitLevel', lv, s.exitLevel || '3'))}</div>
+    <div class="hint">الأسئلة المتدرجة ومستوياتها</div>${qs.map((q, i) => `<div class="qrow"><input name="q_t_${i}" value="${esc(q.t || '')}" placeholder="السؤال ${i + 1}"><select name="q_l_${i}">${opts(lv, q.l || '')}</select><span class="tiny muted">${i + 1}</span></div>`).join('')}
+    ${aligned}</section>`;
+}
+function soloAlignment(l) {
+  const s = l.solo || {}; const qs = (s.questions || []).filter(q => q.t);
+  if (!qs.length && !s.exitTask) return '';
+  const target = Number(s.outcomeLevel || 3); const hi = qs.filter(q => Number(q.l) >= target).length;
+  const rows = [['الناتج', soloName(s.outcomeLevel)], ['أسئلة عند مستوى الناتج فأعلى', `${hi} من ${qs.length}`], ['المهمة الختامية', soloName(s.exitLevel)]];
+  const ok = qs.length && hi > 0 && Number(s.exitLevel || 0) >= target;
+  return `<div class="mini"><b>مصفوفة المواءمة</b><table><tbody>${rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table>${ok ? '<div class="ok">الناتج والأسئلة والمهمة الختامية متوائمة.</div>' : '<div class="note">انتبه: لا توجد أسئلة أو مهمة ختامية عند مستوى الناتج المستهدف.</div>'}</div>`;
+}
+function lessonEditor() {
+  const E = S.lessonEdit; const l = E.data; const v = l.version || 1;
+  const decs = D.decisions.filter(d => d.cycleId === l.cycleId);
+  return `${head(E.id ? lessonLabel(l) : 'درس بحثي جديد', `${esc(cycleLabel(D.cycles.find(x => x.id === l.cycleId)))}`)}
+  <div class="row"><button class="btn ghost small" data-act="closelesson">→ كل الدروس</button>${E.id ? `<button class="btn ghost small" data-act="newversion" data-id="${esc(E.id)}">نسخة جديدة V${v + 1} من هذه</button>` : ''}${E.id && v > 1 ? `<button class="btn ghost small" data-act="compare" data-id="${esc(E.id)}">قارن بالنسخة السابقة</button>` : ''}</div>
+  <form data-form="lesson" class="panel">
+    ${field('عنوان الدرس', inp('title', l.title, 'required'))}
+    ${v > 1 ? `<div class="mini"><b>ما الذي تغيّر في هذه النسخة ولماذا؟</b>${area('changeNote', l.changeNote, 'rows="3" required placeholder="التعديل وسببه من أدلة التعلم"')}${field('قرار التحسين المرتبط', sel('decisionId', decs.map(d => [d.id, shortId('D', d.id) + ' · ' + String(d.decision || '').slice(0, 60)]), l.decisionId, '—'))}</div>` : ''}
+    <div class="grid wide">${LESSON_FIELDS.map(([k, label, kind, hint]) => field(label, kind === 'input' ? inp(k, l[k]) : area(k, l[k], 'rows="3"'), hint)).join('')}</div>
+    ${mod('solo') ? soloBlock(l) : ''}
+    <div class="row"><button class="btn" type="submit">حفظ الخطة</button><span class="small muted">تُحفظ باسمك ويراها الفريق.</span></div></form>`;
+}
+FORM.lesson = async o => {
+  const E = S.lessonEdit; const base = E.data;
+  const data = {title: o.title, cycleId: base.cycleId, version: base.version || 1, familyId: base.familyId || '', parentId: base.parentId || ''};
+  LESSON_FIELDS.forEach(([k]) => { data[k] = o[k] || ''; });
+  if ((base.version || 1) > 1) { data.changeNote = o.changeNote || ''; data.decisionId = o.decisionId || ''; }
+  if (mod('solo')) { const qs = []; Object.keys(o).filter(k => /^q_t_\d+$/.test(k)).sort((a, b) => Number(a.slice(4)) - Number(b.slice(4))).forEach(k => { const i = k.slice(4); if (o[k]) qs.push({t: o[k], l: o['q_l_' + i] || ''}); }); data.solo = {outcomeLevel: o.soloOutcome, exitTask: o.soloExit, exitLevel: o.soloExitLevel, questions: qs}; }
+  if (E.id) { if (!(await updDoc('lessons', E.id, data))) return false; E.data = Object.assign({}, base, data); }
+  else { const id = nid('le'); data.familyId = id; const ok = await addDoc('lessons', data, id); if (!ok) return false; E.id = id; E.data = Object.assign({id}, data); }
+  toast('حُفظت خطة الدرس.');
+};
+ACT.newversion = async b => {
+  const l = D.lessons.find(x => x.id === b.dataset.id); if (!l) return;
+  const fam = D.lessons.filter(x => (x.familyId || x.id) === (l.familyId || l.id)); const v = Math.max(...fam.map(x => x.version || 1)) + 1;
+  const copy = Object.assign({}, l); ['id', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'changeNote', 'decisionId'].forEach(k => delete copy[k]);
+  copy.version = v; copy.parentId = l.id; copy.familyId = l.familyId || l.id;
+  const id = await addDoc('lessons', copy); if (id) { S.lessonEdit = {id, data: Object.assign({id}, copy)}; toast('أُنشئت النسخة V' + v + '. اكتب ما تغيّر ولماذا.'); }
+};
+function lessonCompare() {
+  const b = D.lessons.find(x => x.id === S.compare); if (!b) { S.compare = null; return V.lessons(); }
+  const a = D.lessons.find(x => x.id === b.parentId) || D.lessons.filter(x => (x.familyId || x.id) === (b.familyId || b.id) && (x.version || 1) === (b.version || 1) - 1)[0];
+  if (!a) return `${head('مقارنة النسخ')}<div class="row"><button class="btn ghost small" data-act="closelesson">→ كل الدروس</button></div>${empty('لا توجد نسخة سابقة لهذه.')}`;
+  const rows = [['title', 'العنوان']].concat(LESSON_FIELDS.map(f => [f[0], f[1]]));
+  const dec = D.decisions.find(d => d.id === b.decisionId);
+  const qd = l => { const q = ((l.solo || {}).questions || []).filter(x => x.t); return q.length ? SOLO.slice(1).map(s => `${s[0]}: ${q.filter(x => String(x.l) === s[0]).length}`).join(' · ') : '—'; };
+  return `${head('مقارنة النسخ', esc(b.title || ''))}<div class="row"><button class="btn ghost small" data-act="closelesson">→ كل الدروس</button></div>
+  <section class="panel"><div class="mini"><b>ما الذي تغيّر في V${b.version} ولماذا؟</b><span class="small">${esc(b.changeNote || 'لم يُكتب.')}</span>${dec ? `<span class="small">القرار المرتبط: ${esc(shortId('D', dec.id))} · ${esc(dec.decision)}</span>` : ''}</div>
+  <div class="scroll"><table class="diff"><thead><tr><th>العنصر</th><th>V${a.version || 1}</th><th>V${b.version}</th></tr></thead><tbody>${rows.map(([k, l]) => { const x = a[k] || '', y = b[k] || ''; return `<tr class="${x !== y ? 'chg' : ''}"><td><b>${esc(l)}</b></td><td>${esc(x)}</td><td>${esc(y)}</td></tr>`; }).join('')}
+  ${mod('solo') ? `<tr class="${qd(a) !== qd(b) ? 'chg' : ''}"><td><b>توزيع مستويات الأسئلة (SOLO)</b></td><td>${esc(qd(a))}</td><td>${esc(qd(b))}</td></tr>` : ''}</tbody></table></div><p class="tiny muted">الصفوف المظللة تغيّرت بين النسختين.</p></section>`;
+}
+
+/* ---------- observation and evidence ---------- */
+V.obs = () => {
+  if (!S.P) return head('الملاحظة والأدلة') + needProject();
+  const c = curCycle(); const ls = lessonsOfCycle(c); const keep = S.obsKeep || {};
+  const tags = uniq(D.observations.map(o => o.tag).filter(Boolean));
+  const fl = S.filters.obs || {}; let list = D.observations.slice().sort(byNew);
+  if (fl.cycle) list = list.filter(o => o.cycleId === fl.cycle); if (fl.ind) list = list.filter(o => o.indicator === fl.ind);
+  return `${head('الملاحظة والأدلة', 'نلاحظ تعلّم المتعلمين لا أداء المعلم. اكتب ما رأيته أو سمعته بالضبط في «الدليل المباشر»، وتفسيرك المهني منفصلًا عنه. استخدم رموزًا للمتعلمين لا أسماء.')}
+  <form data-form="obs" class="panel"><div class="grid">${field('الدورة', cycleSelect('cycleId', keep.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), keep.lessonId, ls.length ? undefined : 'لا دروس في هذه الدورة'))}${field('المتعلم أو المجموعة', inp('focus', '', 'placeholder="S07 أو مجموعة 2"'))}${field('المؤشر', sel('indicator', (S.P.indicators || DEFAULT_INDICATORS), keep.indicator))}</div>
+    <div class="split"><div class="ev">${field('الدليل المباشر: ماذا قال أو فعل؟', area('direct', '', 'rows="4" required placeholder="اكتب الكلام أو الفعل كما حدث، دون حكم"'))}</div><div class="interp">${field('التفسير المهني (اختياري)', area('interpretation', '', 'rows="4" placeholder="ماذا يعني هذا عن تفكيره؟"'))}</div></div>
+    <div class="grid">${field('نمط صعوبة (وسم اختياري)', `<input name="tag" list="tagList" placeholder="مثال: يخلط بين السبب والنتيجة"><datalist id="tagList">${tags.map(t => `<option value="${esc(t)}">`).join('')}</datalist>`)}${field('الوقت', inp('time', '', 'type="time"'))}${mod('solo') ? field('مستوى SOLO للاستجابة', sel('soloLevel', SOLO.map(s => [s[0], s[0] + ' · ' + s[1]]), '', 'لم يُصنَّف')) : ''}</div>
+    ${mod('customObs') && (S.P.customObsFields || []).length ? `<div class="grid">${S.P.customObsFields.map((x, i) => field(x, inp('cf_' + i, ''))).join('')}</div>` : ''}
+    <div class="row"><button class="btn" type="submit">حفظ الدليل</button><span class="small muted">تبقى الدورة والدرس والمؤشر كما هي لتسجيل الدليل التالي.</span></div></form>
+  <section class="panel"><div class="row between"><h2>الأدلة (${list.length})</h2><div class="row"><select data-change="fobsc" aria-label="تصفية بالدورة">${opts(D.cycles.map(x => [x.id, cycleLabel(x)]), fl.cycle, 'كل الدورات')}</select><select data-change="fobsi" aria-label="تصفية بالمؤشر">${opts(S.P.indicators || [], fl.ind, 'كل المؤشرات')}</select></div></div>
+  <div class="ledger">${list.slice(0, 60).map(obsCard).join('') || empty('لا أدلة بعد.')}</div></section>`;
+};
+function obsCard(o) {
+  const l = D.lessons.find(x => x.id === o.lessonId);
+  return `<div class="rec"><div class="meta"><b>${esc(shortId('O', o.id))}</b><span>${esc(lessonLabel(l))}</span><span>${esc(o.focus || '')}</span>${pill(o.indicator || '')}${o.tag ? pill(o.tag, 'warn') : ''}${o.soloLevel !== undefined && o.soloLevel !== '' ? pill('SOLO ' + soloName(o.soloLevel), 'good') : ''}<span>${esc(memberName(o.createdBy))}</span></div>
+  <div class="body ev">${esc(o.direct)}</div>${o.interpretation ? `<div class="body interp small">${esc(o.interpretation)}</div>` : ''}${o.custom ? `<div class="tiny muted">${esc(Object.entries(o.custom).map(([k, v]) => k + ': ' + v).join(' · '))}</div>` : ''}</div>`;
+}
+ACT.fobsc = el => { S.filters.obs = Object.assign({}, S.filters.obs, {cycle: el.value}); render(); };
+ACT.fobsi = el => { S.filters.obs = Object.assign({}, S.filters.obs, {ind: el.value}); render(); };
+FORM.obs = async o => {
+  if (!o.direct) { toast('اكتب الدليل المباشر.'); return false; }
+  const l = D.lessons.find(x => x.id === o.lessonId);
+  const custom = {}; (S.P.customObsFields || []).forEach((x, i) => { if (o['cf_' + i]) custom[x] = o['cf_' + i]; });
+  const data = {cycleId: o.cycleId, lessonId: o.lessonId || '', lessonVersion: l ? (l.version || 1) : 1, focus: o.focus, indicator: o.indicator, direct: o.direct, interpretation: o.interpretation, tag: o.tag, time: o.time};
+  if (mod('solo')) data.soloLevel = o.soloLevel || '';
+  if (Object.keys(custom).length) data.custom = custom;
+  const id = await addDoc('observations', data); if (!id) return false;
+  S.obsKeep = {cycleId: o.cycleId, lessonId: o.lessonId, indicator: o.indicator}; toast('حُفظ الدليل ' + shortId('O', id));
+};
+
+/* ---------- improvement and reflection ---------- */
+const DEC_TYPES = ['تعديل مهمة', 'تعديل سؤال', 'تعديل تسلسل الدرس', 'تعديل الزمن', 'تعديل أداة تقييم', 'تعديل الموارد', 'أخرى'];
+V.improve = () => {
+  if (!S.P) return head('التحسين والتأمل') + needProject();
+  const t = curTab('improve', 'decisions'); const c = curCycle();
+  let body = '';
+  if (t === 'meetings') body = `<form data-form="meeting" class="panel"><h2>اجتماع جديد</h2><div class="grid">${field('التاريخ', inp('date', today(), 'type="date" required'))}${field('الدورة', cycleSelect())}</div>
+    ${field('جدول الأعمال', area('agenda', 'عرض الأدلة\nالبحث عن نمط\nقرارات التحسين\nالمهام', 'rows="4"'))}${field('الحضور', checks('attendees', memberOpts(), D.members.map(m => m.id)))}
+    ${field('ملخص النقاش', area('notes', '', 'rows="4" placeholder="ما الأدلة التي عُرضت؟ وما الأنماط التي ظهرت؟"'))}<div><button class="btn" type="submit">حفظ المحضر</button></div></form>
+    <section class="panel"><h2>المحاضر</h2><div class="ledger">${D.meetings.slice().sort(byNew).map(m => `<div class="rec"><div class="meta"><b>${esc(shortId('M', m.id))}</b><span>${esc(fmtDate(m.date))}</span><span>${esc(cycleLabel(D.cycles.find(x => x.id === m.cycleId)))}</span><span>${(m.attendees || []).length} حاضر</span></div><div class="body">${esc(m.notes || '')}</div></div>`).join('') || empty('لا محاضر بعد.')}</div></section>`;
+  if (t === 'decisions') { const obs = inCycle(D.observations, c).sort(byNew).slice(0, 30); const ls = lessonsOfCycle(c);
+    body = `<form data-form="decision" class="panel"><h2>قرار تحسين</h2><p class="small muted">كل قرار يُبنى على دليل. اختر الأدلة من ملاحظات هذه الدورة، ثم اكتب القرار وسببه. يعتمده قائد الفريق أو الميسّر.</p>
+    <div class="grid">${field('الدورة', cycleSelect())}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), '', '—'))}${field('الاجتماع', sel('meetingId', D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), '', '—'))}${field('نوع التعديل', sel('type', DEC_TYPES))}</div>
+    ${obs.length ? field('الأدلة التي بُني عليها القرار', `<div class="ledger" style="max-height:260px;overflow:auto">${obs.map(o => `<label class="rec" style="flex-direction:row;gap:8px"><input type="checkbox" name="evidenceIds" value="${esc(o.id)}"><span class="small"><b>${esc(shortId('O', o.id))}</b> ${esc(String(o.direct).slice(0, 120))}</span></label>`).join('')}</div>`) : '<div class="note">لا ملاحظات في هذه الدورة بعد. يمكنك كتابة الدليل نصًّا.</div>'}
+    ${field('الدليل باختصار', area('evidenceText', '', 'rows="2" placeholder="مثال: 5 من 8 ملاحظات أظهرت أن المتعلمين يتوقفون عند الخطوة الثانية"'))}
+    ${field('القرار', area('decision', '', 'rows="2" required'))}${field('السبب والبدائل التي نوقشت', area('rationale', '', 'rows="2"'))}<div><button class="btn" type="submit">حفظ القرار</button></div></form>
+    <section class="panel"><h2>القرارات</h2><div class="ledger">${D.decisions.slice().sort(byNew).map(decCard).join('') || empty('لا قرارات بعد.')}</div></section>`; }
+  if (t === 'reflections') body = `<form data-form="reflection" class="panel"><h2>تأمل</h2><div class="grid">${field('الدورة', cycleSelect())}${mod('pd') ? field('ساعات التطوير المهني في هذه الدورة', inp('hours', '', 'type="number" min="0" step="0.5"')) : ''}</div>
+    ${field('ما الذي تعلّمته عن تفكير المتعلمين؟', area('learned', '', 'rows="3" required'))}${field('ما الذي سأغيّره في تدريسي؟', area('change', '', 'rows="3"'))}<div><button class="btn" type="submit">حفظ التأمل</button></div></form>
+    <section class="panel"><h2>التأملات</h2><div class="ledger">${D.reflections.slice().sort(byNew).map(r => `<div class="rec"><div class="meta"><b>${esc(memberName(r.createdBy))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === r.cycleId)))}</span><span>${esc(fmtDate(r.createdAt))}</span>${r.hours ? pill(r.hours + ' ساعة') : ''}</div><div class="body">${esc(r.learned)}</div>${r.change ? `<div class="small muted">سأغيّر: ${esc(r.change)}</div>` : ''}</div>`).join('') || empty('لا تأملات بعد.')}</div></section>`;
+  return `${head('التحسين والتأمل', 'من الدليل إلى قرار التحسين: نناقش الأدلة في الاجتماع، ونتخذ قرارات مربوطة بها، ونكتب ما تعلّمناه.')}${tabs('improve', [['decisions', 'قرارات التحسين'], ['meetings', 'الاجتماعات'], ['reflections', 'التأملات']])}${body}`;
+};
+function decCard(d) {
+  const st = d.status || 'proposed';
+  return `<div class="rec"><div class="meta"><b>${esc(shortId('D', d.id))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === d.cycleId)))}</span>${pill(Object.fromEntries(DECISION_STATUS)[st], st === 'proposed' ? 'warn' : 'good')}${d.type ? pill(d.type) : ''}<span>${esc(memberName(d.createdBy))}</span></div>
+  <div class="body"><b>${esc(d.decision)}</b></div>${d.rationale ? `<div class="small">السبب: ${esc(d.rationale)}</div>` : ''}
+  <div class="small muted">الدليل: ${esc((d.evidenceIds || []).map(x => shortId('O', x)).join('، '))} ${esc(d.evidenceText || '')}</div>
+  ${isManager() ? `<div class="row">${st === 'proposed' ? `<button class="btn small" data-act="decst" data-id="${esc(d.id)}" data-st="approved">اعتماد القرار</button>` : ''}${st === 'approved' ? `<button class="btn ghost small" data-act="decst" data-id="${esc(d.id)}" data-st="done">نُفّذ</button>` : ''}</div>` : ''}</div>`;
+}
+ACT.decst = async b => { if (await updDoc('decisions', b.dataset.id, {status: b.dataset.st, [b.dataset.st + 'By']: ME.uid, [b.dataset.st + 'At']: nowIso()})) toast(b.dataset.st === 'approved' ? 'اعتُمد القرار.' : 'سُجّل التنفيذ.'); };
+FORM.meeting = async o => { const id = await addDoc('meetings', {date: o.date, cycleId: o.cycleId, agenda: o.agenda, attendees: o.attendees || [], notes: o.notes}); if (id) toast('حُفظ المحضر ' + shortId('M', id)); return !!id; };
+FORM.decision = async o => { if (!o.decision) { toast('اكتب القرار.'); return false; } if (!(o.evidenceIds || []).length && !o.evidenceText) { toast('القرار يحتاج دليلًا: اختر ملاحظة أو اكتب الدليل.'); return false; } const id = await addDoc('decisions', {cycleId: o.cycleId, lessonId: o.lessonId, meetingId: o.meetingId, type: o.type, evidenceIds: o.evidenceIds || [], evidenceText: o.evidenceText, decision: o.decision, rationale: o.rationale, status: 'proposed'}); if (id) toast('حُفظ القرار ' + shortId('D', id)); return !!id; };
+FORM.reflection = async o => { const id = await addDoc('reflections', {cycleId: o.cycleId, learned: o.learned, change: o.change, hours: o.hours || ''}); if (id) toast('حُفظ التأمل.'); return !!id; };
+
+const SOLO_EX = {
+  'الكيمياء': ['لماذا نغيّر المعاملات لا الصيغ عند موازنة المعادلة؟', ['«لأن المعلمة قالت»', '«لأن الأرقام يجب أن تتساوى»', '«الذرات لا تفنى، ونضرب المعامل، والطرفان متساويان»', '«لأن الذرات لا تفنى، فعدد كل نوع يتساوى في الطرفين، لذلك نغيّر المعاملات لا الصيغ؛ تغيير الصيغة يغيّر المادة نفسها»', '«القاعدة نفسها تفسّر لماذا تبدو كتلة الورق ناقصة بعد احتراقه: خرجت الذرات غازات»']],
+  'الرياضيات': ['في حل 2س + 3 = 11، لماذا نطرح 3 من الطرفين؟', ['«لأن هذه هي الطريقة»', '«لنتخلّص من 3»', '«نطرح 3، والطرفان متساويان، ونريد س وحدها»', '«المعادلة ميزان: ما نفعله بطرف نفعله بالآخر ليبقى التساوي، فنطرح 3 من الطرفين لتبقى 2س وحدها»', '«المبدأ نفسه يفسّر لماذا نقسم الطرفين على 2، ولماذا تنعكس إشارة المتباينة عند الضرب في سالب»']],
+  'الفيزياء': ['ماذا يعني ميل منحنى السرعة–الزمن؟', ['«خط مائل»', '«هو التسارع»', '«الميل تغيّر الصادات على السينات، والسرعة تزيد، وفيه تسارع»', '«الميل هو مقدار تغيّر السرعة في كل ثانية، لذلك هو التسارع؛ وكلما زاد الميل تغيّرت السرعة أسرع»', '«وبالمنطق نفسه: ميل منحنى الموقع–الزمن هو السرعة»']],
+  'التقنية الرقمية': ['لماذا نضع الشرط قبل التكرار في الخوارزمية؟', ['«لأن البرنامج يطلب ذلك»', '«حتى يعمل البرنامج»', '«الشرط يفحص، والتكرار يعيد، والترتيب مهم»', '«الشرط يقرّر هل نستمر، فلو جاء بعد التكرار لنُفّذت الخطوة مرة زائدة حتى لو كان الشرط غير متحقق»', '«الفكرة نفسها تفسّر الفرق بين while و do-while ومتى نختار كلًا منهما»']],
+  'العلوم': ['لماذا تتكوّن قطرات ماء على سطح كوب بارد؟', ['«لأن الكوب مبلول»', '«بسبب التكاثف»', '«في الهواء بخار، والكوب بارد، والبخار يصير ماء»', '«الهواء الملامس للكوب يبرد، فيتكاثف بخار الماء الذي فيه قطرات على السطح»', '«السبب نفسه يفسّر الندى صباحًا وتكوّن الغيوم في طبقات الجو الباردة»']],
+  'الأحياء': ['لماذا تتطابق الخليتان الناتجتان من الانقسام المتساوي؟', ['«لأنهما خليتان»', '«لأن الكروموسومات تتضاعف»', '«تتضاعف الكروموسومات، وتنفصل، وتتكوّن خليتان»', '«تتضاعف الكروموسومات قبل الانقسام، ثم تذهب كل نسخة إلى قطب، فتأخذ كل خلية نسخة كاملة مطابقة»', '«ولهذا يختلف الانقسام المنصّف: تنفصل فيه أزواج الكروموسومات فتأخذ كل خلية نصف العدد»']],
+  'علم الأرض والفضاء': ['لماذا تكثر الزلازل عند حدود الصفائح؟', ['«لأن الأرض تهتز»', '«لأن الصفائح تتحرك»', '«الصفائح تتحرك وتتصادم وتحدث زلازل»', '«عند الحد تحتك الصفائح فيتراكم الضغط في الصخور، ثم ينطلق فجأة فيحدث الزلزال»', '«وبالسبب نفسه تتكوّن البراكين والجبال على الحدود نفسها»']],
+  'اللغة العربية': ['ما أثر التشبيه في البيت على المعنى؟', ['«البيت جميل»', '«فيه تشبيه»', '«فيه تشبيه، والمشبّه به قوي، والشاعر حزين»', '«شبّه الشاعر حزنه بالليل الطويل، فأظهر ثقله وامتداده، فقوّى شعور الحزن في البيت»', '«تحكم على صورة جديدة في نص آخر بالمعيار نفسه: ماذا أضافت إلى المعنى؟»']],
+  'اللغة الإنجليزية': ['What is the main idea of the paragraph, and how do you know?', ['"I don\'t know"', '"Plastic"', '"Plastic is bad. It is in the sea. Animals eat it."', '"The main idea is that plastic harms sea life, because the writer shows animals eating it and gives numbers to support it."', '"I can find the main idea of a new article the same way: topic + what the writer says about it + evidence."']],
+  'الدراسات الإسلامية': ['ما وجه الدلالة من الدليل على الحكم؟', ['لا تجيب، أو تعيد نص السؤال', 'تذكر الحكم فقط', 'تذكر الحكم وتذكر الدليل، دون أن تربط بينهما', 'تربط لفظًا محدّدًا في الدليل بالحكم، وتبيّن كيف دلّ عليه', 'تطبّق الطريقة نفسها على مسألة جديدة لم تُدرس']],
+  'الدراسات الاجتماعية': ['لماذا تنشأ المدن غالبًا قرب الأنهار والسواحل؟', ['«صدفة»', '«بسبب الماء»', '«الماء، والزراعة، والنقل»', '«الماء يسمح بالزراعة، والزراعة توفّر الغذاء، والنقل المائي يسهّل التجارة، فيستقر الناس وتنمو المدينة»', '«وتفسّر بالطريقة نفسها لماذا تنشأ مدن اليوم قرب الطرق السريعة والموانئ»']],
+  'المهارات الحياتية': ['لماذا نبدأ الميزانية بالمصروفات الضرورية؟', ['«لأنها أول القائمة»', '«لأنها مهمة»', '«الضروريات مهمة، والدخل محدود، والكماليات تنتظر»', '«لأن الدخل محدود، فلو صرفنا على الكماليات أولًا قد لا يبقى ما يغطي الضروريات، لذلك نرتّب بالأولوية»', '«المبدأ نفسه ينفع في تنظيم الوقت: المهم والعاجل أولًا»']],
+  'التفكير الناقد': ['هل الحجة مقنعة؟ ولماذا؟', ['«نعم»', '«لا، لأنها خطأ»', '«فيها مقدمة ونتيجة، والمقدمة غير صحيحة»', '«النتيجة تعتمد على مقدمة بلا دليل، فإن سقطت المقدمة سقطت النتيجة، لذلك الحجة ضعيفة»', '«تكشف المغالطة نفسها في إعلان أو خبر جديد»']],
+  'التربية الفنية': ['لماذا استخدم الفنان الألوان الباردة في العمل؟', ['«لأنه يحبها»', '«لأنها هادئة»', '«الألوان زرقاء، والجو هادئ، والموضوع البحر»', '«الألوان الباردة توحي بالهدوء والبعد، وهذا يناسب فكرة العزلة التي يعبّر عنها العمل»', '«تختار ألوان عملها الخاص بناء على الإحساس الذي تريد إيصاله»']],
+  'التربية البدنية': ['متى تختارين التمرير القصير بدل الطويل؟', ['«دائمًا»', '«عندما تكون الزميلة قريبة»', '«القصير أدق، والطويل أسرع، والمنافسة قريبة»', '«عندما تكون المنافسة قريبة، لأن القصير أدق وأصعب في القطع، فنحافظ على الكرة»', '«تطبّق المبدأ نفسه في لعبة أخرى: الدقة أولًا حين يكون الضغط عاليًا»']]};
+const SOLO_GENERIC = ['سؤال «لماذا؟» أو «فسّري» في درسك', ['لا تجيب، أو تعيد نص السؤال', 'تذكر معلومة واحدة صحيحة', 'تذكر عدة معلومات صحيحة دون ربط بينها', 'تربط المعلومات: «لأن… فـ… لذلك…»', 'تنقل الفكرة إلى مثال أو موقف جديد لم يُشرح']];
+
+/* =========================================================
+   Optional modules: frameworks library, SOLO, the AI assistant
+   and the researcher's space. None of them is needed to run a
+   project; each appears only when the project switches it on.
+   ========================================================= */
+COLLS.push('soloscores'); D.soloscores = [];
+const soloOf = sj => SOLO_EX[sj] || SOLO_GENERIC;
+const SOLO_VERBS = [['1', 'يسمّي، يحدّد، يتذكّر، ينفّذ إجراءً بسيطًا'], ['2', 'يعدّد، يصف، يجمع، يصنّف، ينفّذ خطوات'], ['3', 'يفسّر، يقارن، يحلّل، يربط السبب بالنتيجة، يبرّر، يطبّق'], ['4', 'يعمّم، يتنبأ، يفترض، يقيّم، ينقل إلى موقف جديد، يصمّم']];
+const isCode = s => /^[A-Za-z]{1,3}[-_]?\d{1,4}$/.test(String(s || '').trim());
+
+/* ---------- frameworks library ---------- */
+V.frameworks = () => {
+  const t = curTab('fw', 'solo'); const P = S.P; const cur = P ? (P.framework || 'none') : '';
+  const subs = uniq(projSubjects().concat(Object.keys(SOLO_EX)));
+  const sj = S.soloSubj && subs.includes(S.soloSubj) ? S.soloSubj : (projSubjects().find(x => SOLO_EX[x]) || projSubjects()[0] || 'الرياضيات');
+  const useBtn = k => P && isManager() ? (cur === k ? pill('الإطار المعتمد في مشروعك', 'good') : `<button class="btn small" data-act="usefw" data-k="${k}">اعتماده إطارًا لمشروعي</button>`) : '';
+  let body = '';
+  if (t === 'solo') {
+    const [q, ex] = soloOf(sj); const pr = S.prac;
+    body = `<section class="panel"><div class="row between"><h2>تصنيف SOLO: بنية الناتج التعليمي الملاحظ</h2>${useBtn('solo')}</div>
+      <p>تصنيف وضعه Biggs وCollis (1982) يصف <b>عمق</b> الفهم الظاهر في استجابة المتعلم، لا كمية المعلومات. نستخدمه بثلاث طرق: نصمّم به نواتج الدرس وأسئلته ومهامه، ونصنّف به استجابات المتعلمين، ونقارن به عمق الفهم بين نسخة الدرس الأولى والمعدّلة.</p>
+      <div class="hint" style="margin-bottom:6px">اختر المادة لترى مثالًا منها</div><div class="chips">${subs.map(n => `<button type="button" class="c" aria-pressed="${n === sj}" data-act="soloSubj" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+      <div class="scroll"><table><thead><tr><th>المستوى</th><th>ماذا يعني</th><th>${SOLO_EX[sj] ? 'مثال: ' + esc(q) : 'كيف يبدو في الاستجابة'}</th></tr></thead><tbody>${SOLO.map((s, i) => `<tr${s[0] === '3' ? ' class="mine"' : ''}><td><b>${s[0]}</b> ${esc(s[1])}</td><td>${esc(s[2])}</td><td>${esc(ex[i])}</td></tr>`).join('')}</tbody></table></div>
+      ${SOLO_EX[sj] ? '' : '<p class="small muted">لا يوجد مثال جاهز لهذه المادة. اكتب سؤال «لماذا؟» من درسك، وضع مع الفريق استجابة متوقعة لكل مستوى.</p>'}</section>
+    <section class="panel"><h2>التصحيح في ثلاث خطوات</h2><ol style="margin:0;padding-inline-start:22px;display:flex;flex-direction:column;gap:6px"><li>هل في الاستجابة فكرة صحيحة؟ لا ← <b>0</b>. فكرة واحدة ← <b>1</b>.</li><li>أكثر من فكرة: هل يربط بينها بـ«لأن… لذلك»؟ لا ← <b>2</b>. نعم ← <b>3</b>.</li><li>هل ينقل الفكرة أو يعمّمها على موقف لم يُشرح؟ نعم ← <b>4</b>.</li></ol>
+      <p class="small muted">قبل التصحيح يصحّح عضوان العينة نفسها (5 استجابات مثلًا) منفردين ثم يقارنان، حتى يتفق الفريق على معنى كل مستوى.</p></section>
+    <section class="panel"><h2>مصفوفة التخطيط: أفعال كل مستوى</h2><p class="small muted">الفعل في الناتج يحدد مستواه. إن كان الهدف «علائقي» فيجب أن يوجد في الدرس سؤال ومهمة ختامية عند المستوى 3 على الأقل.</p>
+      <div class="scroll"><table><thead><tr><th>المستوى</th><th>أفعال الناتج والأسئلة</th><th>شكل المهمة</th></tr></thead><tbody>${SOLO_VERBS.map((v, i) => `<tr><td><b>${v[0]}</b> ${esc(SOLO[Number(v[0])][1])}</td><td>${esc(v[1])}</td><td class="small">${esc(['سؤال تذكر أو إجراء واحد', 'قائمة أو وصف أو خطوات', 'تفسير «لماذا» أو مقارنة أو تبرير', 'موقف جديد: تنبؤ، تعميم، تصميم'][i])}</td></tr>`).join('')}</tbody></table></div></section>
+    <section class="panel"><h2>تدريب على التصنيف</h2>${pr ? `<div class="mini"><b>${esc(soloOf(pr.sj)[0])}</b><span>الاستجابة: ${esc(soloOf(pr.sj)[1][pr.i])}</span></div>
+      <div class="row">${SOLO.map(s => `<button class="btn ${pr.ans === s[0] ? '' : 'ghost'} small" data-act="pracans" data-v="${s[0]}"${pr.ans != null ? ' disabled' : ''}>${s[0]} · ${esc(s[1])}</button>`).join('')}</div>
+      ${pr.ans != null ? (Number(pr.ans) === pr.i ? `<div class="ok">صحيح: ${esc(soloName(pr.i))}.</div>` : `<div class="note">المستوى الصحيح: ${esc(soloName(pr.i))}. ${esc(SOLO[pr.i][2])}.</div>`) : ''}
+      <div class="row"><button class="btn small" data-act="prac">استجابة أخرى</button><span class="small muted">النتيجة: ${S.pracScore ? S.pracScore.ok + ' من ' + S.pracScore.n : '—'}</span></div>` : `<p class="small">تظهر استجابة متعلم من مادة عشوائية، وتختار مستواها. تدريب سريع قبل أول تصحيح جماعي.</p><button class="btn small" data-act="prac">ابدأ التدريب</button>`}</section>`;
+  }
+  if (t === 'criteria') {
+    const cr = (P && P.criteria) || [];
+    body = `<section class="panel"><div class="row between"><h2>معايير مرنة يحددها الفريق</h2>${useBtn('criteria')}</div>
+      <p>بعض الفرق لا تحتاج تصنيفًا بمستويات. يكفي أن تتفق على معايير واضحة لما تبحث عنه في عمل المتعلمين، مثل: «يستخدم دليلًا من النص» أو «يشرح خطوات الحل بلغته». تظهر المعايير مؤشراتٍ في بطاقة الملاحظة.</p>
+      ${P ? `<div class="ledger">${cr.map((c, i) => `<div class="rec"><div class="row between"><b>${esc(c.name)}</b>${isManager() ? `<button class="btn ghost small" data-act="delcrit" data-i="${i}">حذف</button>` : ''}</div>${c.desc ? `<div class="small">${esc(c.desc)}</div>` : ''}</div>`).join('') || empty('لا معايير بعد.')}</div>
+      ${isManager() ? `<form data-form="crit" class="stepsec"><div class="grid wide">${field('المعيار', inp('name', '', 'required'))}${field('كيف يبدو عند تحققه', inp('desc', ''))}</div><div><button class="btn small" type="submit">إضافة المعيار</button></div></form>` : ''}` : '<p class="small muted">افتح مشروعًا لتحديد معاييره.</p>'}</section>`;
+  }
+  if (t === 'none') body = `<section class="panel"><div class="row between"><h2>العمل دون إطار</h2>${useBtn('none')}</div>
+    <p>بحث الدرس لا يشترط إطارًا تصنيفيًا. يكفي أن يحدد الفريق هدفًا بعيدًا ومشكلة تعلم، ثم يجمع أدلة مباشرة على تفكير المتعلمين ويناقشها ويتخذ قرارات تحسين مبنية عليها. المؤشرات في بطاقة الملاحظة تُعدّل من إعدادات المشروع.</p></section>`;
+  return `${head('مكتبة الأطر', 'أطر تساعد الفريق على وصف تعلّم المتعلمين بلغة مشتركة. يختار كل مشروع إطاره، أو يعمل دون إطار.')}${tabs('fw', [['solo', 'تصنيف SOLO'], ['criteria', 'معايير الفريق'], ['none', 'دون إطار']])}${body}`;
+};
+ACT.soloSubj = b => { S.soloSubj = b.dataset.v; render(); };
+ACT.prac = () => { const subs = Object.keys(SOLO_EX); const sj = subs[Math.floor(Math.random() * subs.length)]; S.prac = {sj, i: Math.floor(Math.random() * 5), ans: null}; render(); };
+ACT.pracans = b => { const p = S.prac; if (!p || p.ans != null) return; p.ans = b.dataset.v; const sc = S.pracScore || {ok: 0, n: 0}; sc.n++; if (Number(p.ans) === p.i) sc.ok++; S.pracScore = sc; render(); };
+ACT.usefw = async b => { const k = b.dataset.k; const data = {framework: k}; if (k === 'solo') data.modules = Object.assign({}, S.P.modules, {solo: true}); if (k === 'criteria' && (S.P.criteria || []).length) data.indicators = uniq((S.P.indicators || []).concat(S.P.criteria.map(c => c.name))); if (await updProject(data)) toast('اعتُمد الإطار للمشروع.'); };
+FORM.crit = async o => { if (!o.name) return false; const cr = (S.P.criteria || []).concat({name: o.name, desc: o.desc}); const data = {criteria: cr}; if (S.P.framework === 'criteria') data.indicators = uniq((S.P.indicators || []).concat(o.name)); if (await updProject(data)) toast('أُضيف المعيار.'); };
+ACT.delcrit = async b => { const cr = (S.P.criteria || []).slice(); cr.splice(Number(b.dataset.i), 1); await updProject({criteria: cr}); };
+
+/* ---------- SOLO module: depth of learning across lesson versions ---------- */
+function soloDist(levels) {
+  const n = levels.length; const c = [0, 0, 0, 0, 0]; levels.forEach(l => { const k = Number(l); if (k >= 0 && k <= 4) c[k]++; });
+  return {n, c, mean: avg(levels.map(Number)), rel: n ? (c[3] + c[4]) / n : null};
+}
+function soloBars(dist) {
+  if (!dist.n) return '<span class="small muted">لا بيانات.</span>';
+  return `<div class="lvlbars">${SOLO.map((s, i) => `<div class="r"><span>${s[0]} · ${esc(s[1])}</span><div class="bar"><i style="width:${Math.round(dist.c[i] / dist.n * 100)}%"></i></div><span class="small">${dist.c[i]}</span></div>`).join('')}</div><p class="small muted">العدد ${dist.n} · المتوسط ${f2(dist.mean)} · علائقي فأعلى ${Math.round((dist.rel || 0) * 100)}%</p>`;
+}
+const soloLevelsFor = (c, version) => {
+  const ex = D.soloscores.filter(s => s.cycleId === c.id && (s.lessonVersion || 1) === version).flatMap(s => Object.values(s.scores || {}));
+  const ob = D.observations.filter(o => o.cycleId === c.id && (o.lessonVersion || 1) === version && o.soloLevel !== undefined && o.soloLevel !== '').map(o => o.soloLevel);
+  return {ex, ob};
+};
+V.solo = () => {
+  if (!S.P) return head('تصنيف SOLO') + needProject();
+  if (!mod('solo')) return head('تصنيف SOLO') + `<section class="panel">${empty('وحدة SOLO غير مفعّلة في هذا المشروع.')}</section>`;
+  const c = curCycle(); const ls = lessonsOfCycle(c);
+  const v1 = c ? soloLevelsFor(c, 1) : {ex: [], ob: []}; const v2 = c ? soloLevelsFor(c, 2) : {ex: [], ob: []};
+  const d1 = soloDist(v1.ex), d2 = soloDist(v2.ex);
+  return `${head('تصنيف SOLO في المشروع', 'نرصد مستوى كل متعلم في المهمة الختامية للدرس، ثم نقارن توزيع المستويات بين النسخة الأولى من الدرس والنسخة المعدّلة. المتعلمون برموز فقط.')}
+  <section class="panel"><div class="row between">${field('الدورة', `<select data-change="lcycle">${opts(D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).map(x => [x.id, cycleLabel(x)]), c && c.id)}</select>`)}<button class="btn ghost small" data-act="go" data-v="frameworks">دليل SOLO والتدريب</button></div>
+    <div class="cols"><div class="mini"><b>النسخة الأولى V1: المهمة الختامية</b>${soloBars(d1)}</div><div class="mini"><b>النسخة المعدّلة V2: المهمة الختامية</b>${soloBars(d2)}</div></div>
+    ${d1.n && d2.n ? `<div class="${d2.mean > d1.mean ? 'ok' : 'note'}">تغيّر المتوسط من ${f2(d1.mean)} إلى ${f2(d2.mean)}، ونسبة «علائقي فأعلى» من ${Math.round(d1.rel * 100)}% إلى ${Math.round(d2.rel * 100)}%. هذه قراءة وصفية للفريق، وليست اختبارًا إحصائيًا.</div>` : '<p class="small muted">تظهر المقارنة عندما يُرصد نشاط الختام في النسختين.</p>'}
+    ${(v1.ob.length || v2.ob.length) ? `<p class="small muted">ومن بطاقات الملاحظة: ${v1.ob.length} استجابة مصنّفة في V1 بمتوسط ${f2(avg(v1.ob.map(Number)))}، و${v2.ob.length} في V2 بمتوسط ${f2(avg(v2.ob.map(Number)))}.</p>` : ''}</section>
+  <form data-form="soloscore" class="panel"><h2>رصد مستويات المهمة الختامية</h2>
+    <div class="grid">${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), '', ls.length ? undefined : 'لا دروس في هذه الدورة'))}${field('الصف أو الشعبة (رمز)', inp('group', '', 'placeholder="مثال: 1/3"'))}${field('التاريخ', inp('date', today(), 'type="date"'))}</div>
+    ${field('المستويات', area('scores', '', 'rows="6" dir="ltr" placeholder="S001 3\nS002 2\nS003 1"'), 'سطر لكل متعلم: الرمز ثم المستوى من 0 إلى 4. لا تكتب أسماء.')}
+    <div><button class="btn" type="submit">حفظ الرصد</button></div></form>
+  <section class="panel"><h2>الرصد المحفوظ</h2><div class="ledger">${D.soloscores.slice().sort(byNew).map(s => { const l = D.lessons.find(x => x.id === s.lessonId); const dd = soloDist(Object.values(s.scores || {})); return `<div class="rec"><div class="meta"><b>${esc(lessonLabel(l))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === s.cycleId)))}</span><span>${esc(s.group || '')}</span><span>${esc(fmtDate(s.date))}</span><span>${dd.n} متعلم · متوسط ${f2(dd.mean)}</span><button class="btn ghost small" data-act="delsolo" data-id="${esc(s.id)}">حذف</button></div></div>`; }).join('') || empty('لا رصد بعد.')}</div></section>
+  <section class="panel"><h2>مواءمة الدروس</h2><div class="ledger">${ls.map(l => `<div class="rec"><b>${esc(lessonLabel(l))}</b>${soloAlignment(l) || '<span class="small muted">لم تُصنّف أسئلته بعد.</span>'}</div>`).join('') || empty('لا دروس.')}</div></section>`;
+};
+function parseScores(txt, max = 4) {
+  const out = {}; const bad = [];
+  String(txt || '').split(/\n/).map(x => x.trim()).filter(Boolean).forEach(line => {
+    const p = line.split(/[\s,؛;:\t]+/).filter(Boolean); const code = (p[0] || '').toUpperCase();
+    const nums = p.slice(1).map(Number);
+    if (!isCode(code) || !nums.length || nums.some(n => isNaN(n) || n < 0 || n > max)) { bad.push(line); return; }
+    out[code] = nums.length === 1 ? nums[0] : nums;
+  });
+  return {out, bad};
+}
+FORM.soloscore = async o => {
+  const l = D.lessons.find(x => x.id === o.lessonId); if (!l) { toast('اختر الدرس.'); return false; }
+  const {out, bad} = parseScores(o.scores, 4);
+  if (bad.length) { toast('سطر غير صحيح: «' + bad[0] + '». اكتب رمزًا مثل S001 ثم مستوى من 0 إلى 4.'); return false; }
+  if (Object.values(out).some(Array.isArray)) { toast('اكتب مستوى واحدًا لكل متعلم.'); return false; }
+  if (!Object.keys(out).length) { toast('لا مستويات.'); return false; }
+  const id = await addDoc('soloscores', {cycleId: l.cycleId, lessonId: l.id, lessonVersion: l.version || 1, group: o.group, date: o.date, scores: out});
+  if (id) toast('حُفظ رصد ' + Object.keys(out).length + ' متعلم.'); return !!id;
+};
+ACT.delsolo = async b => { if (b.dataset.sure) { await delDoc('soloscores', b.dataset.id); return; } b.dataset.sure = 1; b.textContent = 'اضغط للتأكيد'; };
+
+/* ---------- AI assistant: prompt builder + human judgment log ---------- */
+const AI_PURPOSES = [
+  ['tasks', 'اقتراح مهام وأسئلة', 'اقترح 3 مهام و6 أسئلة متدرجة لهذا الدرس، مع الاستجابات المتوقعة والأخطاء الشائعة لكل سؤال.'],
+  ['alt', 'بدائل تدريسية', 'اقترح بديلين مختلفين لتدريس الجزء الذي تعثر فيه المتعلمون، مع مزايا كل بديل وحدوده.'],
+  ['check', 'فحص اتساق الخطة', 'افحص اتساق خطة الدرس: هل تقيس الأسئلة والمهام نواتج التعلم المكتوبة؟ وأين الفجوات؟ لا تُعد كتابة الخطة.'],
+  ['evidence', 'قراءة أدلة الملاحظة', 'اقرأ أدلة الملاحظة التالية واقترح أنماطًا محتملة في تفكير المتعلمين، مع التمييز بين ما تدل عليه الأدلة مباشرة وما هو تفسير.'],
+  ['solo', 'تصنيف الأسئلة وفق SOLO', 'صنّف كل سؤال في الخطة وفق مستويات SOLO (1–4) مع التعليل، واقترح سؤالًا عند المستوى العلائقي وآخر عند التجريدي الممتد إن غابا.']];
+const AI_JUDGE = [['accept', 'قبول'], ['modify', 'قبول بتعديل'], ['reject', 'رفض']];
+function aiPrompt(o) {
+  const P = S.P; const pur = AI_PURPOSES.find(x => x[0] === o.purpose) || AI_PURPOSES[0];
+  const l = D.lessons.find(x => x.id === o.lessonId); const c = D.cycles.find(x => x.id === o.cycleId);
+  const parts = [`أنت مساعد لفريق بحث درس من المعلمين. السياق: المرحلة ${P.stage || '—'}${P.grade ? '، الصف ' + P.grade : ''}، المادة ${projSubjects().join(' و') || '—'}.`];
+  if (P.goals && P.goals.longTerm) parts.push('الهدف البعيد للفريق: ' + P.goals.longTerm);
+  if (P.problem && P.problem.statement) parts.push('مشكلة التعلم: ' + P.problem.statement);
+  if (c && c.topic) parts.push('موضوع الدورة: ' + c.topic);
+  if (l) { parts.push('خطة الدرس الحالية:'); [['title', 'العنوان']].concat(LESSON_FIELDS).forEach(([k, lb]) => { if (l[k]) parts.push(`- ${lb}: ${l[k]}`); }); if (mod('solo') && l.solo) { parts.push(`- مستوى SOLO المستهدف: ${soloName(l.solo.outcomeLevel)}`); (l.solo.questions || []).forEach((q, i) => parts.push(`  سؤال ${i + 1} (${soloName(q.l)}): ${q.t}`)); } }
+  if (o.purpose === 'evidence' && c) { const ob = inCycle(D.observations, c).slice(0, 25); if (ob.length) { parts.push('أدلة الملاحظة (رموز لا أسماء):'); ob.forEach(x => parts.push(`- [${x.indicator || ''}] ${x.direct}`)); } }
+  if (mod('solo') && o.purpose !== 'solo') parts.push('يستخدم الفريق تصنيف SOLO (ما قبل البنية، أحادي، متعدد، علائقي، تجريدي ممتد)؛ اذكر مستوى كل سؤال تقترحه.');
+  parts.push('المطلوب: ' + pur[2]); if (o.extra) parts.push('ملاحظة من الفريق: ' + o.extra);
+  parts.push('اكتب بالعربية، بإيجاز، بما يناسب هذه المرحلة. هذه مقترحات يراجعها الفريق ولا تُعتمد آليًا.');
+  return parts.join('\n');
+}
+const privacyIssue = t => /@|\b\d{9,}\b/.test(t) ? 'النص يحتوي بريدًا أو رقمًا طويلًا (قد يكون هوية أو جوالًا). احذفه قبل الإرسال.' : '';
+V.ai = () => {
+  if (!S.P) return head('مساعد الذكاء الاصطناعي') + needProject();
+  if (!mod('ai')) return head('مساعد الذكاء الاصطناعي') + `<section class="panel">${empty('الوحدة غير مفعّلة في هذا المشروع.')}</section>`;
+  const c = curCycle(); const ls = lessonsOfCycle(c); const d = S.aiDraft || {purpose: 'tasks', cycleId: c && c.id, lessonId: (ls[0] || {}).id};
+  const purposes = AI_PURPOSES.filter(p => p[0] !== 'solo' || mod('solo'));
+  const log = D.ai.slice().sort(byNew); const cnt = k => log.filter(x => x.judgment === k).length;
+  return `${head('مساعد الذكاء الاصطناعي', 'يبني لك طلبًا (برومبت) من سياق المشروع والدرس دون أي بيانات شخصية، فتنسخه إلى أداة الذكاء الاصطناعي التي تستخدمها، ثم تسجّل ما اقترحته وحكم الفريق عليه: قبول أو تعديل أو رفض، مع السبب.')}
+  <form data-form="aibuild" class="panel"><h2>1. ابنِ الطلب</h2><div class="grid">${field('الغرض', sel('purpose', purposes.map(p => [p[0], p[1]]), d.purpose))}${field('الدورة', cycleSelect('cycleId', d.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), d.lessonId, '—'))}</div>
+    ${field('إضافة من الفريق (اختياري)', area('extra', d.extra, 'rows="2" placeholder="مثال: المتعلمون يخلطون بين المفهومين"'))}<div><button class="btn" type="submit">ابنِ الطلب</button></div></form>
+  ${d.prompt ? `<section class="panel"><h2>2. انسخ الطلب واستخدمه</h2>${privacyIssue(d.prompt) ? `<div class="note">${esc(privacyIssue(d.prompt))}</div>` : '<div class="ok">لا يحتوي الطلب أسماء أو بيانات شخصية.</div>'}<textarea id="aiPrompt" rows="10" dir="rtl">${esc(d.prompt)}</textarea>
+    <div class="row"><button class="btn small" data-act="copyprompt">نسخ</button><a class="btn ghost small" target="_blank" rel="noopener" href="https://claude.ai/new?q=${encodeURIComponent(d.prompt.slice(0, 6000))}">فتح في Claude</a></div></section>
+  <form data-form="ailog" class="panel"><h2>3. سجّل المقترح وحكم الفريق</h2>${field('ما اقترحه الذكاء الاصطناعي', area('output', '', 'rows="5" required placeholder="الصق المقترح هنا"'))}
+    <div class="grid">${field('حكم الفريق', sel('judgment', AI_JUDGE, 'modify'))}${field('السبب', inp('reason', '', 'required placeholder="لماذا قبلناه أو عدّلناه أو رفضناه؟"'))}</div>
+    ${field('النص المعتمد بعد المراجعة', area('adopted', '', 'rows="3" placeholder="ما الذي دخل الخطة فعلًا؟"'))}<div><button class="btn" type="submit">حفظ في السجل</button></div></form>` : ''}
+  <section class="panel"><h2>سجل الاستخدام (${log.length})</h2><div class="kpis"><div class="kpi"><b>${cnt('accept')}</b><span>قبول</span></div><div class="kpi"><b>${cnt('modify')}</b><span>قبول بتعديل</span></div><div class="kpi"><b>${cnt('reject')}</b><span>رفض</span></div></div>
+    <div class="ledger">${log.map(x => `<div class="rec"><div class="meta"><b>${esc(shortId('AI', x.id))}</b><span>${esc((AI_PURPOSES.find(p => p[0] === x.purpose) || [, ''])[1])}</span><span>${esc(lessonLabel(D.lessons.find(l => l.id === x.lessonId)))}</span>${pill(Object.fromEntries(AI_JUDGE)[x.judgment] || '', x.judgment === 'reject' ? 'warn' : 'good')}<span>${esc(memberName(x.createdBy))}</span></div><div class="small">${esc(String(x.output || '').slice(0, 300))}</div><div class="small"><b>السبب:</b> ${esc(x.reason)}</div>${x.adopted ? `<div class="small"><b>المعتمد:</b> ${esc(x.adopted)}</div>` : ''}</div>`).join('') || empty('لا استخدامات مسجلة بعد.')}</div></section>`;
+};
+FORM.aibuild = async o => { S.aiDraft = Object.assign({}, o, {prompt: aiPrompt(o)}); };
+ACT.copyprompt = async () => { const t = $('#aiPrompt'); try { await navigator.clipboard.writeText(t.value); toast('نُسخ الطلب.'); } catch (x) { t.select(); toast('حدّد النص وانسخه.'); } };
+FORM.ailog = async o => {
+  const d = S.aiDraft || {}; if (!o.output || !o.reason) { toast('الصق المقترح واكتب سبب الحكم.'); return false; }
+  const id = await addDoc('ai', {purpose: d.purpose, cycleId: d.cycleId, lessonId: d.lessonId || '', prompt: d.prompt, output: o.output, judgment: o.judgment, reason: o.reason, adopted: o.adopted});
+  if (id) { S.aiDraft = null; toast('سُجّل في سجل الذكاء الاصطناعي.'); } return !!id;
+};
+
+/* ---------- researcher's space ---------- */
+const RDESIGN = () => D.research.find(r => r.id === 'design') || {};
+const RSCORES = () => D.research.filter(r => r.kind === 'scores');
+const tTwo = (t, df) => { if (!isFinite(t) || !(df > 0)) return null; return ibeta(df / (df + t * t), df / 2, 0.5); };
+function lgamma(x) { const g = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5]; let y = x; const tmp = x + 5.5 - (x + 0.5) * Math.log(x + 5.5); let s = 1.000000000190015; for (let j = 0; j < 6; j++) s += g[j] / ++y; return -tmp + Math.log(2.5066282746310005 * s / x); }
+function betacf(x, a, b) { let qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap; if (Math.abs(d) < 1e-30) d = 1e-30; d = 1 / d; let h = d; for (let m = 1; m <= 200; m++) { const m2 = 2 * m; let aa = m * (b - m) * x / ((qam + m2) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30; d = 1 / d; h *= d * c; aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30; d = 1 / d; const del = d * c; h *= del; if (Math.abs(del - 1) < 3e-12) break; } return h; }
+function ibeta(x, a, b) { if (x <= 0) return 0; if (x >= 1) return 1; const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x)); return x < (a + 1) / (a + b + 2) ? bt * betacf(x, a, b) / a : 1 - bt * betacf(1 - x, b, a) / b; }
+const fp = p => p == null ? '—' : (p < 0.001 ? '< .001' : p.toFixed(3));
+const total = v => Array.isArray(v) ? v.reduce((s, x) => s + Number(x), 0) : Number(v);
+function scoreMap(measureId, groupId, time) { const r = RSCORES().find(x => x.measureId === measureId && x.groupId === groupId && x.time === time); const m = {}; if (r) Object.entries(r.data || {}).forEach(([k, v]) => { m[k] = total(v); }); return m; }
+function groupStats(measureId, g) {
+  const pre = scoreMap(measureId, g.id, 'pre'), post = scoreMap(measureId, g.id, 'post');
+  const both = Object.keys(pre).filter(k => k in post); const gains = both.map(k => post[k] - pre[k]);
+  const sdg = sd(gains); const tg = sdg ? avg(gains) / (sdg / Math.sqrt(gains.length)) : null;
+  return {g, pre: Object.values(pre), post: Object.values(post), paired: both.length, gains, mg: avg(gains), sdg, t: tg, p: tg == null ? null : tTwo(tg, gains.length - 1), dz: sdg ? avg(gains) / sdg : null};
+}
+function welch(a, b) {
+  if (a.length < 2 || b.length < 2) return null;
+  const ma = avg(a), mb = avg(b), va = sd(a) ** 2, vb = sd(b) ** 2; const se = Math.sqrt(va / a.length + vb / b.length); if (!se) return null;
+  const t = (ma - mb) / se; const df = (va / a.length + vb / b.length) ** 2 / ((va / a.length) ** 2 / (a.length - 1) + (vb / b.length) ** 2 / (b.length - 1));
+  const sp = Math.sqrt(((a.length - 1) * va + (b.length - 1) * vb) / (a.length + b.length - 2));
+  return {t, df, p: tTwo(t, df), d: sp ? (ma - mb) / sp : null};
+}
+V.research = () => {
+  if (!S.P) return head('مساحة الباحث') + needProject();
+  if (!mod('research') || !isResearcher()) return head('مساحة الباحث') + `<section class="panel">${empty('هذه المساحة لمن يحمل دور الباحث في مشروع فعّل وحدة البحث الأكاديمي.')}</section>`;
+  const R = RDESIGN(); const t = curTab('res', 'design'); const groups = R.groups || []; const measures = R.measures || [];
+  let body = '';
+  if (t === 'design') body = `<form data-form="rdesign" class="panel"><h2>تصميم الدراسة</h2>
+    ${field('عنوان الدراسة', area('title', R.title, 'rows="2"'))}${field('أسئلة البحث', area('questions', R.questions, 'rows="4" placeholder="سؤال في كل سطر"'))}
+    <div class="grid">${field('المنهج', sel('method', [['qual', 'نوعي'], ['quant', 'كمي'], ['mixed', 'مختلط']], R.method || 'mixed'))}${field('التصميم الكمي', sel('quantDesign', [['none', 'لا يوجد'], ['one', 'مجموعة واحدة: قبلي وبعدي'], ['two', 'مجموعتان: تجريبية وضابطة، قبلي وبعدي']], R.quantDesign || 'none'))}${field('نوع التصميم المختلط', inp('mixedType', R.mixedType, 'placeholder="مثال: مدمج QUAN(qual)"'))}</div>
+    ${field('مراحل الدراسة', area('phases', R.phases, 'rows="4" placeholder="الإعداد ← تطوير التدخل ← اختبار الفاعلية ← التحليل والدمج"'))}
+    ${field('حدود الاستدلال', area('limits', R.limits, 'rows="3"'))}<div><button class="btn" type="submit">حفظ التصميم</button></div></form>
+    <section class="panel"><h2>ما يصل إلى الباحث من بيانات الفريق</h2><p class="small">يحدد قائد الفريق ما يُشارَك مع مساحة الباحث من إعدادات المشروع. المشارك حاليًا: ${esc(Object.entries(S.P.researchShare || {}).filter(x => x[1]).map(x => ({lessons: 'خطط الدروس', observations: 'الملاحظات', decisions: 'القرارات', meetings: 'المحاضر', ai: 'سجل الذكاء الاصطناعي'}[x[0]])).join('، ') || 'لا شيء')}.</p>
+    <div class="row">${Object.entries(S.P.researchShare || {}).filter(x => x[1]).map(x => `<button class="btn ghost small" data-act="rexport" data-c="${x[0]}">تصدير ${esc({lessons: 'الدروس', observations: 'الملاحظات', decisions: 'القرارات', meetings: 'المحاضر', ai: 'سجل الذكاء الاصطناعي'}[x[0]])} CSV</button>`).join('')}</div></section>`;
+  if (t === 'groups') body = `<section class="panel"><h2>المجموعات</h2><p class="small muted">تُعرَّف المجموعات فقط إذا احتاجها التصميم. افصل الفصل التجريبي الأولي (Pilot) الذي طُوّر فيه التدخل عن مجموعات التجربة الرئيسة.</p>
+    <table><thead><tr><th>المجموعة</th><th>الدور</th><th>المرحلة</th><th></th></tr></thead><tbody>${groups.map((g, i) => `<tr><td>${esc(g.name)}</td><td>${esc({exp: 'تجريبية', ctrl: 'ضابطة', single: 'مجموعة الدراسة'}[g.role] || '')}</td><td>${esc(g.kind === 'pilot' ? 'تطوير (Pilot)' : 'رئيسة (Formal)')}</td><td><button class="btn ghost small" data-act="rdel" data-k="groups" data-i="${i}">حذف</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">لا مجموعات.</td></tr>'}</tbody></table>
+    <form data-form="rgroup" class="row">${inp('name', '', 'placeholder="مثال: 1/2 التجريبية" required')}${sel('role', [['exp', 'تجريبية'], ['ctrl', 'ضابطة'], ['single', 'مجموعة الدراسة']])}${sel('kind', [['formal', 'رئيسة'], ['pilot', 'تطوير (Pilot)']])}<button class="btn small" type="submit">إضافة</button></form></section>
+    <section class="panel"><h2>أدوات القياس</h2><table><thead><tr><th>الأداة</th><th>عدد البنود</th><th>أعلى درجة للبند</th><th></th></tr></thead><tbody>${measures.map((m, i) => `<tr><td>${esc(m.name)}</td><td>${esc(m.items)}</td><td>${esc(m.max)}</td><td><button class="btn ghost small" data-act="rdel" data-k="measures" data-i="${i}">حذف</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">لا أدوات.</td></tr>'}</tbody></table>
+    <form data-form="rmeasure" class="row">${inp('name', '', 'placeholder="مثال: مهام أداء وفق SOLO" required')}${inp('items', '4', 'type="number" min="1" style="width:90px" aria-label="عدد البنود"')}${inp('max', '4', 'type="number" min="1" style="width:90px" aria-label="أعلى درجة"')}<button class="btn small" type="submit">إضافة</button></form></section>`;
+  if (t === 'ethics') { const e = R.ethics || {}; body = `<form data-form="rethics" class="panel"><h2>البروتوكول والموافقات</h2>
+    <div class="grid">${field('رقم موافقة لجنة الأخلاقيات', inp('approval', e.approval))}${field('تاريخ الموافقة', inp('approvalDate', e.approvalDate, 'type="date"'))}${field('إذن إدارة التعليم أو المدرسة', inp('permission', e.permission))}</div>
+    ${field('موافقات المشاركين', area('consents', e.consents, 'rows="3" placeholder="المعلمات: موافقة مكتوبة طوعية… أولياء الأمور: …"'))}${field('بروتوكول البيانات', area('protocol', e.protocol || 'المتعلمون والمعلمون برموز فقط. ملف ربط الرموز بالأسماء خارج المنصة لدى الباحث. لا تُرسل بيانات شخصية لأدوات الذكاء الاصطناعي. الملاحظة لتعلّم المتعلمين لا لتقييم المعلمين. المشاركة طوعية. بيانات التطوير (Pilot) منفصلة عن بيانات التجربة الرئيسة.', 'rows="5"'))}
+    ${e.approval ? '<div class="ok">سُجّلت موافقة الأخلاقيات. يمكن جمع البيانات الرئيسة.</div>' : '<div class="note">لم تُسجّل موافقة الأخلاقيات بعد. اجمع بيانات التطوير (Pilot) فقط حتى تُعتمد.</div>'}<div><button class="btn" type="submit">حفظ</button></div></form>`; }
+  if (t === 'scores') { const k = S.rscore || {}; body = measures.length && groups.length ? `<form data-form="rscore" class="panel"><h2>إدخال الدرجات</h2><div class="grid">${field('الأداة', sel('measureId', measures.map(m => [m.id, m.name]), k.measureId))}${field('المجموعة', sel('groupId', groups.map(g => [g.id, g.name]), k.groupId))}${field('التطبيق', sel('time', [['pre', 'قبلي'], ['post', 'بعدي']], k.time))}</div>
+    ${field('الدرجات', area('data', '', 'rows="8" dir="ltr" placeholder="S001 3 2 4 1\nS002 2 2 3 0"'), 'سطر لكل متعلم: الرمز ثم درجة كل بند مفصولة بمسافة. يستبدل الحفظ أي إدخال سابق لنفس الأداة والمجموعة والتطبيق.')}<div><button class="btn" type="submit">حفظ</button></div></form>
+    <section class="panel"><h2>الإدخالات</h2><table><thead><tr><th>الأداة</th><th>المجموعة</th><th>التطبيق</th><th>عدد المتعلمين</th></tr></thead><tbody>${RSCORES().map(r => `<tr><td>${esc((measures.find(m => m.id === r.measureId) || {}).name || '')}</td><td>${esc((groups.find(g => g.id === r.groupId) || {}).name || '')}</td><td>${r.time === 'pre' ? 'قبلي' : 'بعدي'}</td><td>${Object.keys(r.data || {}).length}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">لا إدخالات.</td></tr>'}</tbody></table></section>` : `<section class="panel">${empty('عرّف المجموعات وأدوات القياس أولًا من تبويب «المجموعات والأدوات».')}</section>`; }
+  if (t === 'analysis') body = researchAnalysis(R);
+  return `${head('مساحة الباحث', 'مساحة مستقلة لا يراها إلا من يحمل دور الباحث في هذا المشروع. الباحث يختار المنهج، والمنصة لا تفرض تصميمًا.')}${tabs('res', [['design', 'التصميم'], ['groups', 'المجموعات والأدوات'], ['ethics', 'البروتوكول والموافقات'], ['scores', 'الدرجات'], ['analysis', 'التحليل']])}${body}`;
+};
+function researchAnalysis(R) {
+  const groups = (R.groups || []).filter(g => S.rPilot || g.kind !== 'pilot'); const measures = R.measures || [];
+  if (!measures.length || !groups.length) return `<section class="panel">${empty('لا توجد أدوات أو مجموعات للتحليل.')}</section>`;
+  return measures.map(m => {
+    const st = groups.map(g => groupStats(m.id, g)); const maxT = (Number(m.items) || 1) * (Number(m.max) || 4);
+    const exp = st.find(x => x.g.role === 'exp'), ctl = st.find(x => x.g.role === 'ctrl');
+    const wg = exp && ctl ? welch(exp.gains, ctl.gains) : null; const wpost = exp && ctl ? welch(exp.post, ctl.post) : null; const wpre = exp && ctl ? welch(exp.pre, ctl.pre) : null;
+    return `<section class="panel"><h2>${esc(m.name)} <span class="small muted">(الدرجة العظمى ${maxT})</span></h2>
+    <div class="scroll"><table><thead><tr><th>المجموعة</th><th>ن قبلي</th><th>متوسط قبلي (ع)</th><th>ن بعدي</th><th>متوسط بعدي (ع)</th><th>ن مزدوج</th><th>متوسط الكسب</th><th>t مزدوج</th><th>p</th><th>dz</th></tr></thead><tbody>${st.map(x => `<tr><td>${esc(x.g.name)}${x.g.kind === 'pilot' ? ' ' + pill('Pilot', 'warn') : ''}</td><td>${x.pre.length}</td><td>${f2(avg(x.pre))} (${f2(sd(x.pre))})</td><td>${x.post.length}</td><td>${f2(avg(x.post))} (${f2(sd(x.post))})</td><td>${x.paired}</td><td>${f2(x.mg)}</td><td>${f2(x.t)}</td><td>${fp(x.p)}</td><td>${f2(x.dz)}</td></tr>`).join('')}</tbody></table></div>
+    ${wg ? `<div class="mini"><b>المقارنة بين التجريبية والضابطة (Welch)</b><span class="small">تكافؤ القبلي: t = ${f2(wpre && wpre.t)}، p = ${fp(wpre && wpre.p)} · البعدي: t = ${f2(wpost && wpost.t)}، p = ${fp(wpost && wpost.p)}، d = ${f2(wpost && wpost.d)} · الكسب: t = ${f2(wg.t)}، df = ${f2(wg.df)}، p = ${fp(wg.p)}، d = ${f2(wg.d)}</span><span class="tiny muted">قراءة أولية. للتقرير النهائي استخدم تحليل التغاير ANCOVA (البعدي مع ضبط القبلي) في SPSS أو R من ملف التصدير.</span></div>` : ''}
+    <div class="row"><button class="btn ghost small" data-act="rcsv" data-m="${esc(m.id)}">تصدير البيانات CSV (صيغة عريضة)</button><label class="small"><input type="checkbox" data-change="rpilot"${S.rPilot ? ' checked' : ''}> إظهار مجموعات Pilot</label></div></section>`;
+  }).join('');
+}
+const rsave = data => updDoc('research', 'design', data);
+FORM.rdesign = async o => { if (await rsave(o)) toast('حُفظ التصميم.'); };
+FORM.rgroup = async o => { const R = RDESIGN(); if (await rsave({groups: (R.groups || []).concat({id: nid('g'), name: o.name, role: o.role, kind: o.kind})})) toast('أُضيفت المجموعة.'); };
+FORM.rmeasure = async o => { const R = RDESIGN(); if (await rsave({measures: (R.measures || []).concat({id: nid('m'), name: o.name, items: Number(o.items) || 1, max: Number(o.max) || 4})})) toast('أُضيفت الأداة.'); };
+FORM.rethics = async o => { if (await rsave({ethics: o})) toast('حُفظ.'); };
+ACT.rdel = async b => { const R = RDESIGN(); const a = (R[b.dataset.k] || []).slice(); a.splice(Number(b.dataset.i), 1); await rsave({[b.dataset.k]: a}); };
+ACT.rpilot = el => { S.rPilot = el.checked; render(); };
+FORM.rscore = async o => {
+  const R = RDESIGN(); const m = (R.measures || []).find(x => x.id === o.measureId); const g = (R.groups || []).find(x => x.id === o.groupId); if (!m || !g) return false;
+  if (g.kind !== 'pilot' && !(R.ethics && R.ethics.approval)) { toast('سجّل موافقة الأخلاقيات قبل إدخال بيانات التجربة الرئيسة.'); return false; }
+  const items = Number(m.items) || 1, mx = Number(m.max) || 4;
+  const {out, bad} = parseScores(o.data, items * mx);
+  if (bad.length) { toast('سطر غير صحيح: «' + bad[0] + '». اكتب رمزًا مثل S001 ثم الدرجات.'); return false; }
+  /* each line is either one total, or exactly one score per item */
+  const wrong = Object.entries(out).find(([, v]) => Array.isArray(v) ? (v.length !== items || v.some(x => x > mx)) : false);
+  if (wrong) { toast('درجات ' + wrong[0] + ': المطلوب ' + items + ' درجات، كل منها من 0 إلى ' + mx + '، أو درجة كلية واحدة.'); return false; }
+  if (!Object.keys(out).length) { toast('لا درجات.'); return false; }
+  S.rscore = {measureId: o.measureId, groupId: o.groupId, time: o.time};
+  const ok = await updDoc('research', `sc_${o.measureId}_${o.groupId}_${o.time}`, {kind: 'scores', measureId: o.measureId, groupId: o.groupId, time: o.time, data: out});
+  if (ok) toast('حُفظت درجات ' + Object.keys(out).length + ' متعلم.'); return ok;
+};
+function csvOf(rows, cols) { const q = v => { const s = Array.isArray(v) ? v.join(' ') : String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }; return '﻿' + [cols.join(',')].concat(rows.map(r => cols.map(c => q(r[c])).join(','))).join('\n'); }
+function download(name, content, type = 'text/csv;charset=utf-8') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+ACT.rcsv = b => {
+  const R = RDESIGN(); const m = (R.measures || []).find(x => x.id === b.dataset.m); if (!m) return; const rows = [];
+  (R.groups || []).forEach(g => { const pre = scoreMap(m.id, g.id, 'pre'), post = scoreMap(m.id, g.id, 'post'); uniq(Object.keys(pre).concat(Object.keys(post))).sort().forEach(code => rows.push({code, group: g.name, role: g.role, phase: g.kind, pre: pre[code] ?? '', post: post[code] ?? '', gain: code in pre && code in post ? post[code] - pre[code] : ''})); });
+  download(`burhan_${m.name}_${today()}.csv`, csvOf(rows, ['code', 'group', 'role', 'phase', 'pre', 'post', 'gain']));
+};
+const EXPORT_COLS = {lessons: ['id', 'cycleId', 'familyId', 'version', 'title', 'topic', 'outcomes', 'tasks', 'questionsText', 'changeNote', 'decisionId', 'createdAt'], observations: ['id', 'cycleId', 'lessonId', 'lessonVersion', 'focus', 'indicator', 'direct', 'interpretation', 'tag', 'soloLevel', 'createdAt'], decisions: ['id', 'cycleId', 'lessonId', 'type', 'evidenceIds', 'evidenceText', 'decision', 'rationale', 'status', 'createdAt'], meetings: ['id', 'cycleId', 'date', 'agenda', 'notes', 'createdAt'], ai: ['id', 'cycleId', 'lessonId', 'purpose', 'output', 'judgment', 'reason', 'adopted', 'createdAt']};
+ACT.rexport = b => { const c = b.dataset.c; if (!(S.P.researchShare || {})[c]) { toast('هذه البيانات غير مشاركة مع الباحث.'); return; } download(`burhan_${c}_${today()}.csv`, csvOf(D[c], EXPORT_COLS[c])); };
+
+/* =========================================================
+   Analytics and the eight reports (print/PDF, Word, CSV),
+   demo projects, and backups
+   ========================================================= */
+const decLabel = st => Object.fromEntries(DECISION_STATUS)[st || 'proposed'];
+const cyclesSorted = () => D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0));
+const countBy = (arr, f) => { const m = {}; arr.forEach(x => { const k = f(x); if (k) m[k] = (m[k] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+const tbl = (cols, rows) => rows.length ? `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="small muted">لا بيانات.</p>';
+const kv = rows => `<table><tbody>${rows.filter(r => r[1] !== undefined).map(r => `<tr><th style="width:30%">${esc(r[0])}</th><td>${r[1] === '' || r[1] == null ? '—' : esc(r[1]).replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`;
+
+/* ---------- analytics ---------- */
+function analyticsView() {
+  const cs = cyclesSorted(); const tags = countBy(D.observations, o => o.tag); const inds = countBy(D.observations, o => o.indicator);
+  const maxInd = Math.max(1, ...inds.map(x => x[1]));
+  let html = `<section class="panel"><h2>تقدّم الدورات</h2>${tbl(['الدورة', 'الخطوات', 'نسخ الدرس', 'أدلة V1', 'أدلة V2+', 'القرارات', 'التأملات'], cs.map(c => { const n = stepState(c).filter(x => x.ok).length; const ob = inCycle(D.observations, c); return [esc(cycleLabel(c)), `<div class="row"><div class="bar" style="flex:1"><i style="width:${Math.round(n / STEPS.length * 100)}%"></i></div><span class="small">${n}/${STEPS.length}</span></div>`, inCycle(D.lessons, c).length, ob.filter(o => (o.lessonVersion || 1) === 1).length, ob.filter(o => (o.lessonVersion || 1) > 1).length, inCycle(D.decisions, c).length, inCycle(D.reflections, c).length]; }))}</section>
+  <section class="panel"><h2>القرارات</h2><div class="kpis">${DECISION_STATUS.map(([k, l]) => `<div class="kpi"><b>${D.decisions.filter(d => (d.status || 'proposed') === k).length}</b><span>${esc(l)}</span></div>`).join('')}<div class="kpi"><b>${D.decisions.filter(d => (d.evidenceIds || []).length).length}</b><span>مربوطة بأدلة ملاحظة</span></div></div></section>
+  <div class="cols"><section class="panel"><h2>مؤشرات الفريق</h2><div class="lvlbars">${inds.map(([k, n]) => `<div class="r"><span>${esc(k)}</span><div class="bar"><i style="width:${Math.round(n / maxInd * 100)}%"></i></div><span class="small">${n}</span></div>`).join('') || '<span class="small muted">لا أدلة بعد.</span>'}</div></section>
+  <section class="panel"><h2>الصعوبات المتكررة</h2>${tags.length ? tbl(['النمط', 'مرات الظهور'], tags.slice(0, 10).map(([k, n]) => [esc(k), n])) : '<p class="small muted">استخدم «نمط صعوبة» في بطاقة الملاحظة لتظهر الأنماط هنا.</p>'}</section></div>`;
+  if (mod('solo')) html += `<section class="panel"><h2>لوحة SOLO</h2>${tbl(['الدورة', 'رصد V1 (ن · متوسط · علائقي+)', 'رصد V2 (ن · متوسط · علائقي+)'], cs.map(c => { const a = soloDist(soloLevelsFor(c, 1).ex), b = soloDist(soloLevelsFor(c, 2).ex); const f = d => d.n ? `${d.n} · ${f2(d.mean)} · ${Math.round(d.rel * 100)}%` : '—'; return [esc(cycleLabel(c)), f(a), f(b)]; }))}</section>`;
+  if (mod('pd')) html += `<section class="panel"><h2>المشاركة والتطوير المهني</h2>${tbl(['العضو', 'الأدوار', 'اجتماعات حضرها', 'نسخ دروس', 'ملاحظات', 'تأملات', 'ساعات'], D.members.map(m => [esc(m.name || m.email), esc((m.roles || []).map(r => ROLE[r]).join('، ')), D.meetings.filter(x => (x.attendees || []).includes(m.id)).length, D.lessons.filter(x => x.createdBy === m.id).length, D.observations.filter(x => x.createdBy === m.id).length, D.reflections.filter(x => x.createdBy === m.id).length, f2(D.reflections.filter(x => x.createdBy === m.id).reduce((s, x) => s + (Number(x.hours) || 0), 0))]))}</section>`;
+  return html + '<p class="tiny muted">التحليلات داخل المشروع فقط. لا تقارن المنصة مشاريع مختلفة رقميًا لأن أهدافها وموادها وفرقها مختلفة.</p>';
+}
+
+/* ---------- the eight reports ---------- */
+function repWrap(title, body, sub) {
+  const P = S.P;
+  return `<div class="report" dir="rtl"><div class="rephead"><b>بُرهان</b> · ${esc(P.name)}<span>${esc(P.org || '')} · ${esc(P.stage || '')} · ${esc(projSubjects().join('، '))} · ${esc(fmtDate(today()))}</span></div><h2>${esc(title)}</h2>${sub ? `<p class="small">${esc(sub)}</p>` : ''}${body}
+  <p class="tiny muted">المتعلمون مشار إليهم برموز. الملاحظة لتعلّم المتعلمين، لا لتقييم المعلمين.</p></div>`;
+}
+const lessonBody = l => kv([['العنوان', l.title], ['النسخة', 'V' + (l.version || 1)]].concat(l.changeNote ? [['ما تغيّر ولماذا', l.changeNote]] : []).concat(LESSON_FIELDS.map(([k, lb]) => [lb, l[k] || '']))) + (mod('solo') && l.solo ? `<h3>تصميم SOLO</h3>${kv([['مستوى الناتج', soloName(l.solo.outcomeLevel)], ['المهمة الختامية', (l.solo.exitTask || '') + ' (' + soloName(l.solo.exitLevel) + ')']])}${tbl(['السؤال', 'المستوى'], (l.solo.questions || []).map(q => [esc(q.t), esc(soloName(q.l))]))}` : '');
+const obsRows = list => list.map(o => [esc(shortId('O', o.id)), esc('V' + (o.lessonVersion || 1)), esc(o.focus || ''), esc(o.indicator || ''), esc(o.direct), esc(o.interpretation || '')].concat(mod('solo') ? [esc(o.soloLevel === '' || o.soloLevel == null ? '' : soloName(o.soloLevel))] : []));
+const obsCols = () => ['الرمز', 'النسخة', 'المتعلم', 'المؤشر', 'الدليل المباشر', 'التفسير المهني'].concat(mod('solo') ? ['SOLO'] : []);
+const decRows = list => list.map(d => [esc(shortId('D', d.id)), esc(d.type || ''), esc(d.decision), esc((d.evidenceIds || []).map(x => shortId('O', x)).join('، ') + ' ' + (d.evidenceText || '')), esc(decLabel(d.status))]);
+const decCols = ['الرمز', 'النوع', 'القرار', 'الدليل', 'الحالة'];
+const REPORTS = [
+  {k: 'team', n: 'تقرير تأسيس الفريق', d: 'الفريق وأدواره، والإيقاع، والوحدات، والالتزامات الأخلاقية.', build() { const P = S.P; const sc = P.schedule || {};
+    return repWrap(this.n, `<h3>بيانات المشروع</h3>${kv([['المؤسسة', P.org], ['المرحلة والصف', (P.stage || '') + ' ' + (P.grade || '')], ['المادة أو المجال', projSubjects().join('، ')], ['العام والمدة', (P.year || '') + ' ' + (P.duration || '')]])}
+      <h3>أعضاء الفريق</h3>${tbl(['العضو', 'المدرسة', 'الأدوار'], D.members.map(m => [esc(m.name || m.email), esc(m.school || ''), esc((m.roles || []).map(r => ROLE[r]).join('، '))]))}
+      ${(P.invitedEmails || []).length ? `<p class="small">دعوات لم تُقبل بعد: ${(P.invitedEmails || []).length}</p>` : ''}
+      <h3>الإيقاع</h3>${kv([['الحصص الأسبوعية', sc.lessonsPerWeek], ['مدة الحصة', sc.lessonMinutes], ['الاجتماع', (sc.meetingDay || '') + ' ' + (sc.meetingTime || '')], ['مدة الاجتماع', sc.meetingMinutes], ['عدد الدورات', D.cycles.length], ['الموارد', sc.resources]])}
+      <h3>الوحدات المفعّلة</h3><p>${esc(MODULES.filter(m => mod(m[0])).map(m => m[1]).join('، ') || 'لا شيء: بحث الدرس وحده.')}</p>
+      <h3>التزامات الفريق</h3><ul><li>المشاركة طوعية.</li><li>نلاحظ تعلّم المتعلمين لا أداء المعلم، ولا تُستخدم الملاحظات في التقييم الوظيفي.</li><li>المتعلمون برموز، ولا تُرسل بيانات شخصية لأدوات الذكاء الاصطناعي.</li><li>كل قرار تحسين يُبنى على دليل.</li></ul>`); }},
+  {k: 'plan', n: 'خطة المشروع', d: 'الهدف البعيد، ومشكلة التعلم، والدورات، والمؤشرات.', build() { const P = S.P; const g = P.goals || {}, p = P.problem || {};
+    return repWrap(this.n, `<h3>الهدف البعيد</h3>${kv([['الهدف', g.longTerm], ['الأفكار الكبرى', g.bigIdeas], ['عادات التفكير', g.habits], ['مؤشرات النجاح', g.successIndicators]])}
+      <h3>مشكلة التعلم</h3>${kv([['المشكلة', p.statement], ['الأدلة', p.evidence], ['المتعلمون المستهدفون', p.learners], ['أسئلة الفريق', p.questions]])}
+      <h3>الدورات</h3>${tbl(['الدورة', 'الموضوع', 'تاريخ الدرس البحثي', 'المنفّذ', 'الحالة'], cyclesSorted().map(c => [esc(cycleLabel(c)), esc(c.topic || ''), esc(fmtDate(c.lessonDate)), esc(c.teacherUid ? memberName(c.teacherUid) : '—'), esc({planned: 'مخطط لها', active: 'جارية', closed: 'مغلقة'}[c.status || 'planned'])]))}
+      <h3>مؤشرات الملاحظة</h3><p>${esc((P.indicators || []).join('، '))}</p>${P.framework && P.framework !== 'none' ? `<p class="small">الإطار المعتمد: ${esc(P.framework === 'solo' ? 'تصنيف SOLO' : 'معايير الفريق')}</p>` : ''}`); }},
+  {k: 'lesson', n: 'خطة الدرس البحثي', d: 'كل عناصر الخطة لنسخة محددة.', p: 'lesson', build(o) { const l = D.lessons.find(x => x.id === o.lessonId); if (!l) return ''; return repWrap(this.n, `<p class="small">${esc(cycleLabel(D.cycles.find(c => c.id === l.cycleId)))}</p>${lessonBody(l)}`); }},
+  {k: 'meeting', n: 'محضر الاجتماع', d: 'جدول الأعمال والحضور والنقاش والقرارات.', p: 'meeting', build(o) { const m = D.meetings.find(x => x.id === o.meetingId); if (!m) return ''; const decs = D.decisions.filter(d => d.meetingId === m.id);
+    return repWrap(this.n + ' ' + shortId('M', m.id), `${kv([['التاريخ', fmtDate(m.date)], ['الدورة', cycleLabel(D.cycles.find(c => c.id === m.cycleId))], ['الحضور', (m.attendees || []).map(memberName).join('، ')], ['جدول الأعمال', m.agenda], ['ملخص النقاش', m.notes]])}<h3>القرارات</h3>${tbl(decCols, decRows(decs))}`); }},
+  {k: 'obs', n: 'تقرير الملاحظة', d: 'أدلة الدورة: الدليل المباشر منفصلًا عن التفسير.', p: 'cycle', csv: true, build(o) { const c = D.cycles.find(x => x.id === o.cycleId); if (!c) return ''; const list = inCycle(D.observations, c).sort(byOld);
+    return repWrap(this.n, `<p class="small">${esc(cycleLabel(c))} · ${list.length} دليل</p><h3>حسب المؤشر</h3>${tbl(['المؤشر', 'العدد'], countBy(list, x => x.indicator).map(([k, n]) => [esc(k), n]))}<h3>الأدلة</h3>${tbl(obsCols(), obsRows(list))}`); },
+    rows(o) { return inCycle(D.observations, D.cycles.find(x => x.id === o.cycleId)).map(x => ({id: shortId('O', x.id), version: x.lessonVersion || 1, focus: x.focus, indicator: x.indicator, direct: x.direct, interpretation: x.interpretation, tag: x.tag, solo: x.soloLevel ?? ''})); }},
+  {k: 'cycle', n: 'تقرير دورة بحث الدرس', d: 'من الدليل إلى قرار التحسين: الخطوات والنسخ والأدلة والقرارات والتأملات.', p: 'cycle', build(o) { const c = D.cycles.find(x => x.id === o.cycleId); if (!c) return ''; const ls = lessonsOfCycle(c); const ob = inCycle(D.observations, c);
+    let solo = ''; if (mod('solo')) { const a = soloDist(soloLevelsFor(c, 1).ex), b = soloDist(soloLevelsFor(c, 2).ex); solo = `<h3>عمق الفهم وفق SOLO (المهمة الختامية)</h3>${tbl(['المستوى', 'V1', 'V2'], SOLO.map((s, i) => [esc(s[0] + ' · ' + s[1]), a.c[i], b.c[i]]).concat([['المتوسط', f2(a.mean), f2(b.mean)], ['علائقي فأعلى', a.n ? Math.round(a.rel * 100) + '%' : '—', b.n ? Math.round(b.rel * 100) + '%' : '—']]))}<p class="tiny muted">قراءة وصفية للفريق.</p>`; }
+    return repWrap(this.n, `${kv([['الدورة', cycleLabel(c)], ['الموضوع', c.topic], ['تاريخ الدرس البحثي', fmtDate(c.lessonDate)], ['المنفّذ', c.teacherUid ? memberName(c.teacherUid) : ''], ['الملاحِظون', (c.observers || []).map(memberName).join('، ')]])}
+      <h3>الخطوات</h3>${tbl(['الخطوة', 'الحالة'], stepState(c).map(x => [esc(x.s.n), x.ok ? 'مكتملة' : (x.s.optional ? 'اختيارية' : 'لم تكتمل')]))}
+      <h3>دراسة المحتوى</h3><p>${esc(c.contentStudy || '—')}</p>
+      <h3>نسخ الدرس</h3>${tbl(['الدرس', 'النسخة', 'ما تغيّر ولماذا', 'القرار'], ls.map(l => [esc(l.title || ''), 'V' + (l.version || 1), esc(l.changeNote || (l.version > 1 ? '' : 'النسخة الأولى')), esc(l.decisionId ? shortId('D', l.decisionId) : '')]))}
+      <h3>أدلة التعلم</h3><p>${ob.length} دليل: ${ob.filter(x => (x.lessonVersion || 1) === 1).length} في النسخة الأولى و${ob.filter(x => (x.lessonVersion || 1) > 1).length} في المعدّلة.</p>${tbl(['النمط المتكرر', 'العدد'], countBy(ob, x => x.tag).map(([k, n]) => [esc(k), n]))}
+      <h3>قرارات التحسين</h3>${tbl(decCols, decRows(inCycle(D.decisions, c)))}${solo}
+      <h3>التأملات</h3>${tbl(['العضو', 'ما تعلّمته', 'ما سأغيّره'], inCycle(D.reflections, c).map(r => [esc(memberName(r.createdBy)), esc(r.learned), esc(r.change || '')]))}`); }},
+  {k: 'project', n: 'تقرير إنجاز المشروع', d: 'ملخص كل الدورات والأرقام والقرارات والمشاركة.', csv: true, build() {
+    return repWrap(this.n, `${kv([['الهدف البعيد', (S.P.goals || {}).longTerm], ['مشكلة التعلم', (S.P.problem || {}).statement]])}
+      <h3>بالأرقام</h3>${tbl(['الأعضاء', 'الدورات', 'نسخ الدروس', 'الأدلة', 'الاجتماعات', 'القرارات المعتمدة أو المنفذة', 'التأملات'], [[D.members.length, D.cycles.length, D.lessons.length, D.observations.length, D.meetings.length, D.decisions.filter(d => d.status && d.status !== 'proposed').length, D.reflections.length]])}
+      <h3>الدورات</h3>${tbl(['الدورة', 'الموضوع', 'الخطوات المكتملة', 'القرارات'], cyclesSorted().map(c => [esc(cycleLabel(c)), esc(c.topic || ''), stepState(c).filter(x => x.ok).length + '/' + STEPS.length, inCycle(D.decisions, c).length]))}
+      <h3>قرارات التحسين</h3>${tbl(decCols, decRows(D.decisions.slice().sort(byOld)))}
+      ${mod('pd') ? '<h3>المشاركة</h3>' + tbl(['العضو', 'ملاحظات', 'تأملات', 'ساعات'], D.members.map(m => [esc(m.name || m.email), D.observations.filter(x => x.createdBy === m.id).length, D.reflections.filter(x => x.createdBy === m.id).length, f2(D.reflections.filter(x => x.createdBy === m.id).reduce((s, x) => s + (Number(x.hours) || 0), 0))])) : ''}`); },
+    rows() { return D.decisions.map(d => ({id: shortId('D', d.id), cycle: cycleLabel(D.cycles.find(c => c.id === d.cycleId)), type: d.type, decision: d.decision, evidence: (d.evidenceIds || []).map(x => shortId('O', x)).join(' ') + ' ' + (d.evidenceText || ''), status: decLabel(d.status)})); }},
+  {k: 'lessons', n: 'الدروس المستفادة', d: 'ما تعلّمه الفريق عن تفكير المتعلمين وعن التدريس.', build() {
+    return repWrap(this.n, `<h3>ما تعلّمناه عن تفكير المتعلمين</h3><ul>${D.reflections.slice().sort(byOld).map(r => `<li>${esc(r.learned)} <span class="tiny muted">(${esc(memberName(r.createdBy))})</span></li>`).join('') || '<li>لا تأملات بعد.</li>'}</ul>
+      <h3>ما سنغيّره في تدريسنا</h3><ul>${D.reflections.filter(r => r.change).map(r => `<li>${esc(r.change)}</li>`).join('') || '<li>—</li>'}</ul>
+      <h3>التعديلات التي ثبتت</h3>${tbl(decCols, decRows(D.decisions.filter(d => d.status === 'done' || d.status === 'approved')))}
+      <h3>الصعوبات المتكررة</h3>${tbl(['النمط', 'العدد'], countBy(D.observations, x => x.tag).map(([k, n]) => [esc(k), n]))}`); }}];
+
+V.reports = () => {
+  if (!S.P) return head('التقارير والتحليلات') + needProject();
+  const t = curTab('rep', 'reports');
+  let body = '';
+  if (t === 'analytics') body = analyticsView();
+  else {
+    const r = REPORTS.find(x => x.k === (S.rep || {}).k); const o = S.rep || {};
+    body = `<section class="panel"><h2>اختر التقرير</h2><div class="grid">${REPORTS.map(x => `<button class="action${r && r.k === x.k ? ' on' : ''}" data-act="pickrep" data-k="${x.k}"><b>${esc(x.n)}</b><span>${esc(x.d)}</span></button>`).join('')}</div></section>`;
+    if (r) {
+      let param = '';
+      if (r.p === 'cycle') param = field('الدورة', `<select data-change="repparam" data-p="cycleId">${opts(cyclesSorted().map(c => [c.id, cycleLabel(c)]), o.cycleId, '— اختر —')}</select>`);
+      if (r.p === 'lesson') param = field('نسخة الدرس', `<select data-change="repparam" data-p="lessonId">${opts(D.lessons.slice().sort((a, b) => String(a.cycleId).localeCompare(String(b.cycleId)) || (a.version || 1) - (b.version || 1)).map(l => [l.id, cycleLabel(D.cycles.find(c => c.id === l.cycleId)) + ' · ' + lessonLabel(l)]), o.lessonId, '— اختر —')}</select>`);
+      if (r.p === 'meeting') param = field('الاجتماع', `<select data-change="repparam" data-p="meetingId">${opts(D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), o.meetingId, '— اختر —')}</select>`);
+      const html = r.build(o);
+      body += `<section class="panel"><div class="row between"><h2>${esc(r.n)}</h2><div class="row">${html ? `<button class="btn small" data-act="repprint">طباعة أو PDF</button><button class="btn ghost small" data-act="repword">Word</button>${r.csv ? '<button class="btn ghost small" data-act="repcsv">Excel / CSV</button>' : ''}` : ''}</div></div>${param}
+        ${html || '<p class="small muted">اختر ما يُبنى عليه التقرير.</p>'}</section>`;
+    }
+  }
+  return `${head('التقارير والتحليلات', 'تقارير بالعربية وبمقاس A4 تُبنى من بيانات المشروع مباشرة: اطبعها أو احفظها PDF، أو نزّلها Word أو CSV.')}${tabs('rep', [['reports', 'التقارير'], ['analytics', 'التحليلات']])}${body}`;
+};
+ACT.pickrep = b => { S.rep = {k: b.dataset.k, cycleId: (curCycle() || {}).id}; render(); };
+ACT.repparam = el => { S.rep[el.dataset.p] = el.value; render(); };
+const curRep = () => { const r = REPORTS.find(x => x.k === (S.rep || {}).k); return r ? {r, html: r.build(S.rep)} : null; };
+ACT.repprint = () => { const x = curRep(); if (!x) return; $('#printArea').innerHTML = x.html; window.print(); };
+const wordDoc = html => `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>بُرهان</title><style>@page{size:21cm 29.7cm;margin:2cm}body{font-family:Arial,'Traditional Arabic';direction:rtl;font-size:12pt}table{border-collapse:collapse;width:100%;margin:6pt 0}th,td{border:1px solid #999;padding:4pt;text-align:right;vertical-align:top}th{background:#eee}.rephead span{display:block;color:#555;font-size:10pt}.tiny,.small{font-size:9pt;color:#555}</style></head><body dir="rtl" lang="ar">${html}</body></html>`;
+ACT.repword = () => { const x = curRep(); if (!x) return; download(`${x.r.n} - ${S.P.name}.doc`, wordDoc(x.html), 'application/msword'); };
+ACT.repcsv = () => { const x = curRep(); if (!x || !x.r.rows) return; const rows = x.r.rows(S.rep); download(`${x.r.n} - ${today()}.csv`, csvOf(rows, rows.length ? Object.keys(rows[0]) : ['—'])); };
+
+/* ---------- backups ---------- */
+const LEGACY = ['access', 'team', 'classes', 'cycles', 'lessons', 'ai', 'notes', 'meetings', 'decisions', 'evidence', 'tasks', 'practice', 'exports', 'instruments', 'rqs', 'library', 'config'];
+const isOwner = () => (window.BURHAN_OWNERS || []).map(x => String(x).toLowerCase()).includes(ME.email);
+const _vprojects = V.projects;
+V.projects = () => { const h = _vprojects(); if (S.wiz) return h;
+  return h + `<section class="panel"><h2>نسخ احتياطية</h2><p class="small muted">ملف JSON يحفظ كل بيانات المشروع الحالي على جهازك. احفظه في مكان آمن ولا ترفعه إلى GitHub.</p><div class="row">${S.P ? '<button class="btn ghost small" data-act="projbackup">نسخة احتياطية للمشروع الحالي</button>' : ''}${isOwner() ? '<button class="btn ghost small" data-act="legacybackup">نسخة احتياطية من بيانات النسخة السابقة من بُرهان</button>' : ''}</div></section>`; };
+ACT.projbackup = () => { const out = {exportedAt: nowIso(), project: S.P}; COLLS.forEach(c => { out[c] = D[c]; }); download(`burhan_backup_${S.P.name}_${today()}.json`, JSON.stringify(out, null, 1), 'application/json'); };
+ACT.legacybackup = async b => {
+  b.disabled = true; const out = {exportedAt: nowIso(), source: 'burhan v1'}; let n = 0;
+  for (const c of LEGACY) { try { const s = await db.collection(c).get(); out[c] = snapList(s); n += out[c].length; } catch (x) { out[c] = {error: x.code || String(x)}; } }
+  download(`burhan_v1_backup_${today()}.json`, JSON.stringify(out, null, 1), 'application/json'); toast('نُزّلت النسخة: ' + n + ' سجلًا.'); b.disabled = false;
+};
+
+/* ---------- three demo projects (acceptance test) ---------- */
+function rng(seed) { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
+const codes = (p, n, from = 1) => Array.from({length: n}, (_, i) => p + pad(from + i, 3));
+const DEMOS = [
+  {wiz: {name: 'عمق الفهم المفاهيمي في التقنية الرقمية', org: 'ثانوية تجريبية (بيانات للتجربة)', stage: 'الثانوية', grade: 'الأول الثانوي', year: '1448هـ', duration: 'فصل دراسي', subjects: ['التقنية الرقمية', 'الرياضيات', 'العلوم'], myRoles: ['leader', 'researcher'],
+    team: [{name: 'T02 معلمة التقنية الرقمية', email: 't02.demo@example.com', roles: ['teacher'], school: ''}, {name: 'T03 معلمة الرياضيات', email: 't03.demo@example.com', roles: ['content', 'observer'], school: ''}, {name: 'T04 معلمة العلوم', email: 't04.demo@example.com', roles: ['observer', 'reviewer'], school: ''}],
+    longTerm: 'أن تفسّر الطالبات المفاهيم الرقمية وتربط بينها وتنقلها إلى مواقف جديدة، لا أن تحفظ الإجراءات فقط.', bigIdeas: 'الخوارزمية تسلسل قرارات؛ البيانات تمثيل للواقع', habits: 'التبرير، التساؤل، التحقق من الحل', successIndicators: 'ارتفاع نسبة الاستجابات عند المستوى العلائقي فأعلى في المهام الختامية',
+    statement: 'معظم إجابات الطالبات عن أسئلة «لماذا» في الخوارزميات تقف عند المستوى أحادي البنية أو متعدد البنية.', evidence: 'تحليل الفريق لإجابات مهمة تشخيصية: أغلبها يذكر خطوات دون ربطها بالسبب.', learners: 'طالبات الأول الثانوي', questions: 'كيف نصمّم مهام وأسئلة تنقل الطالبات إلى الفهم العلائقي؟',
+    lessonsPerWeek: '3', lessonMinutes: '45', cycles: 2, meetingDay: 'الاثنين', meetingTime: 'الحصة السادسة', meetingMinutes: '45', modules: ['solo', 'ai', 'research', 'pd']},
+   topic: 'الشروط والتكرار في الخوارزميات', solo: true, ai: true, research: true,
+   lesson: {title: 'لماذا نضع الشرط قبل التكرار؟', concepts: 'الشرط، التكرار، شرط التوقف', prerequisites: 'تمثيل الخوارزمية بمخطط انسيابي', outcomes: 'تفسّر الطالبة أثر موضع الشرط على تنفيذ التكرار', tasks: 'تتبّع خوارزميتين تختلفان في موضع الشرط', questionsText: 'ماذا يحدث لو جاء الشرط بعد التكرار؟', expected: 'بعضهن يصف الخطوات دون ذكر السبب', misconceptions: 'الظن أن الترتيب لا يغيّر النتيجة', resources: 'بطاقات تتبع', time: '5 تهيئة · 25 مهمة · 10 نقاش · 5 ختام', evidence: 'بطاقات التتبع والمهمة الختامية',
+     solo: {outcomeLevel: '3', exitTask: 'فسّري لماذا تتوقف الحلقة في الخوارزمية (أ) ولا تتوقف في (ب)', exitLevel: '3', questions: [{t: 'ما الشرط في الخوارزمية؟', l: '1'}, {t: 'اذكري خطوات التنفيذ', l: '2'}, {t: 'لماذا تختلف النتيجتان؟', l: '3'}]}},
+   change: 'أضفنا سؤال تنبؤ قبل التتبع ومهمة نقل إلى موقف جديد (آلة بيع)، لأن الأدلة أظهرت أن الطالبات يصفن الخطوات دون تفسير.', decision: 'إضافة سؤال تنبؤ «ماذا تتوقعين؟» قبل التتبع، ومهمة نقل في الختام', indicators: ['التفسير المفاهيمي', 'الاستدلال', 'المشاركة في النقاش', 'نقل التعلم'],
+   obs: [['S004', 'التفسير المفاهيمي', '«الشرط يفحص والتكرار يعيد» ثم توقفت ولم تذكر أثر الترتيب', 'تعدد بنية: أفكار صحيحة غير مترابطة', '2', 'تصف دون تفسير'], ['S009', 'الاستدلال', 'تتبعت (أ) صحيحًا وكتبت لـ(ب) النتيجة نفسها', 'تفترض أن الترتيب لا يؤثر', '1', 'تتجاهل الترتيب'], ['S002', 'التفسير المفاهيمي', '«لو جاء الشرط بعد، تُنفّذ الخطوة مرة زائدة لأن الفحص يأتي متأخرًا»', 'ربط السبب بالنتيجة', '3', '']],
+   obs2: [['S004', 'التفسير المفاهيمي', '«لأن الفحص يأتي أولًا فلا تُنفّذ الخطوة إذا كان الشرط خاطئًا، لذلك تتوقف»', 'انتقلت إلى الربط', '3', ''], ['S011', 'نقل التعلم', 'طبقت الفكرة على آلة البيع: «تتحقق الآلة من الرصيد قبل الصرف»', 'نقل إلى موقف جديد', '4', '']],
+   scores: [[1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 2], [2, 3, 3, 2, 3, 3, 2, 3, 4, 2, 3, 3]]},
+  {wiz: {name: 'الفهم القرائي في اللغة العربية', org: 'متوسطة تجريبية (بيانات للتجربة)', stage: 'المتوسطة', grade: 'الثاني المتوسط', year: '1448هـ', duration: 'فصل دراسي', subjects: ['اللغة العربية'], myRoles: ['leader', 'facilitator'],
+    team: [{name: 'T11 معلمة لغة عربية', email: 't11.demo@example.com', roles: ['teacher'], school: ''}, {name: 'T12 معلمة لغة عربية', email: 't12.demo@example.com', roles: ['observer'], school: ''}],
+    longTerm: 'أن يقرأ المتعلمون النص قراءة ناقدة ويدعموا آراءهم بشواهد منه.', statement: 'يستخرج المتعلمون تفاصيل النص لكنهم يتعثرون في تحديد الفكرة الرئيسة ودعمها.', evidence: 'نتائج اختبار الفهم القرائي ومراجعة دفاتر المتعلمين.', learners: 'الثاني المتوسط',
+    lessonsPerWeek: '5', lessonMinutes: '45', cycles: 2, meetingDay: 'الأربعاء', meetingTime: 'بعد الحصة الخامسة', modules: ['pd']},
+   topic: 'استنتاج الفكرة الرئيسة في نص معلوماتي', indicators: ['استخراج الفكرة الرئيسة', 'الاستدلال من النص', 'دعم الرأي بشاهد', 'المفردات في السياق'],
+   lesson: {title: 'الفكرة الرئيسة وشواهدها', concepts: 'الفكرة الرئيسة، الأفكار الداعمة، الشاهد', outcomes: 'يحدد المتعلم الفكرة الرئيسة ويدعمها بشاهدين من النص', tasks: 'قراءة نص عن المياه الجوفية ورسم خريطة فكرة', questionsText: 'ما الذي يريد الكاتب أن نقتنع به؟ ما الدليل؟', expected: 'سيختار بعضهم الجملة الأولى دائمًا', misconceptions: 'الفكرة الرئيسة هي الجملة الأولى', time: '45 دقيقة', evidence: 'خرائط الفكرة'},
+   change: 'أضفنا نموذجًا مفكرًا بصوت عالٍ لنص قصير قبل المهمة.', decision: 'نمذجة التفكير بصوت عالٍ قبل المهمة المستقلة',
+   obs: [['S021', 'استخراج الفكرة الرئيسة', 'كتب الجملة الأولى من النص فكرةً رئيسة', 'يعتمد قاعدة شكلية', '', 'الجملة الأولى = الفكرة'], ['S025', 'دعم الرأي بشاهد', 'ذكر الفكرة دون أي شاهد', '', '', 'رأي بلا شاهد'], ['S030', 'الاستدلال من النص', '«الكاتب يكرر كلمة الهدر في كل فقرة، إذن يريدنا أن نوفر الماء»', 'استدلال من التكرار', '', '']],
+   obs2: [['S021', 'استخراج الفكرة الرئيسة', 'قارن بين فقرتين قبل أن يكتب الفكرة، وكتبها بلغته', 'تحسّن', '', '']], hours: '6'},
+  {wiz: {name: 'الاستقصاء العلمي في العلوم: فريق مدرستين', org: 'مدرستان ابتدائيتان (بيانات للتجربة)', stage: 'الابتدائية', grade: 'الخامس الابتدائي', year: '1448هـ', duration: 'ثمانية أسابيع', subjects: ['العلوم'], myRoles: ['leader'],
+    team: [{name: 'T21 معلم علوم', email: 't21.demo@example.com', roles: ['teacher'], school: 'ابتدائية (أ)'}, {name: 'T22 معلم علوم', email: 't22.demo@example.com', roles: ['observer', 'content'], school: 'ابتدائية (ب)'}, {name: 'T23 مشرف', email: 't23.demo@example.com', roles: ['facilitator'], school: 'مكتب التعليم'}],
+    longTerm: 'أن يطرح المتعلمون أسئلة قابلة للاختبار ويصمموا تجارب بسيطة عادلة.', statement: 'يجري المتعلمون التجارب باتباع الخطوات، لكنهم لا يغيّرون متغيرًا واحدًا فقط.', evidence: 'ملاحظة حصص المختبر في المدرستين.', learners: 'الخامس الابتدائي',
+    lessonsPerWeek: '3', lessonMinutes: '40', cycles: 1, meetingDay: 'الخميس', meetingTime: 'عن بُعد', modules: ['customObs']},
+   topic: 'أثر درجة الحرارة في سرعة الذوبان', indicators: ['طرح سؤال قابل للاختبار', 'ضبط المتغيرات', 'القياس', 'تفسير النتائج'], customObsFields: ['المجموعة', 'أداة القياس المستخدمة', 'هل طرح المتعلم سؤالًا؟'],
+   lesson: {title: 'هل يذوب السكر أسرع في الماء الساخن؟', concepts: 'الذوبان، المتغير المستقل والتابع، التجربة العادلة', outcomes: 'يصمم المتعلم تجربة يغيّر فيها متغيرًا واحدًا', tasks: 'تصميم تجربة في مجموعات وتسجيل الزمن', questionsText: 'ما الذي ستغيّره؟ ما الذي سيبقى ثابتًا؟', expected: 'تغيير الحرارة وكمية الماء معًا', misconceptions: 'كل التغييرات مسموحة', time: '40 دقيقة', evidence: 'ورقة تصميم التجربة'},
+   obs: [['م2', 'ضبط المتغيرات', 'غيّرت المجموعة درجة الحرارة وكمية السكر في الوقت نفسه', 'لا تميّز المتغير المستقل', '', 'تغيير أكثر من متغير', {'المجموعة': '2', 'أداة القياس المستخدمة': 'ساعة إيقاف', 'هل طرح المتعلم سؤالًا؟': 'لا'}], ['S043', 'طرح سؤال قابل للاختبار', '«هل يذوب أسرع لو حرّكناه؟»', 'سؤال قابل للاختبار', '', '', {'المجموعة': '3', 'أداة القياس المستخدمة': 'ساعة إيقاف', 'هل طرح المتعلم سؤالًا؟': 'نعم'}]],
+   decision: 'إضافة جدول «ما أغيّره / ما أقيسه / ما أثبّته» في ورقة التصميم', proposeOnly: true}];
+async function seedDemo(spec) {
+  const pid = await createProject(spec.wiz, {demo: true, indicators: spec.indicators || DEFAULT_INDICATORS.slice(), customObsFields: spec.customObsFields || []}); if (!pid) return null;
+  const pr = db.collection('projects').doc(pid); const put = (c, id, data) => pr.collection(c).doc(id).set(Object.assign({createdBy: ME.uid, createdAt: nowIso()}, data));
+  await pr.collection('cycles').doc('c1').set({title: '', topic: spec.topic, status: 'active', lessonDate: today(), teacherUid: ME.uid, observers: [ME.uid], contentStudy: 'دراسة الفريق للموضوع في المنهج: المفاهيم الأساسية والمتطلبات السابقة والأخطاء الشائعة وتدرّج الفكرة.'}, {merge: true});
+  await put('lessons', 'le1', Object.assign({cycleId: 'c1', version: 1, familyId: 'le1', parentId: '', topic: spec.topic}, spec.lesson));
+  const addObs = async (list, v) => { const ids = []; for (const [focus, indicator, direct, interpretation, sl, tag, custom] of list) { const d = {cycleId: 'c1', lessonId: v === 1 ? 'le1' : 'le2', lessonVersion: v, focus, indicator, direct, interpretation, tag: tag || '', time: ''}; if (spec.solo) d.soloLevel = sl; if (custom) d.custom = custom; const id = nid('ob'); ids.push(id); await put('observations', id, d); } return ids; };
+  const obIds = await addObs(spec.obs, 1); const meId = nid('me'), deId = nid('de');
+  await put('meetings', meId, {date: today(), cycleId: 'c1', agenda: 'عرض الأدلة\nالبحث عن نمط\nقرارات التحسين', attendees: [ME.uid], notes: 'عرض الملاحظون أدلتهم، وظهر نمط متكرر: ' + (spec.obs.map(o => o[5]).filter(Boolean)[0] || '—')});
+  await put('decisions', deId, {cycleId: 'c1', lessonId: 'le1', meetingId: meId, type: 'تعديل مهمة', evidenceIds: obIds.slice(0, 2), evidenceText: '', decision: spec.decision, rationale: 'بناءً على الأدلة المختارة', status: spec.proposeOnly ? 'proposed' : 'approved'});
+  if (!spec.proposeOnly) {
+    await put('lessons', 'le2', Object.assign({}, spec.lesson, {cycleId: 'c1', version: 2, familyId: 'le1', parentId: 'le1', topic: spec.topic, changeNote: spec.change, decisionId: deId}));
+    await addObs(spec.obs2 || [], 2);
+  }
+  await put('reflections', 'rf1', {cycleId: 'c1', learned: 'الأدلة المباشرة كشفت أن المتعلمين يحتاجون إلى ' + (spec.proposeOnly ? 'ضبط المتغيرات صراحة' : 'سؤال يدفعهم إلى التفسير لا الوصف') + '.', change: 'أبدأ بسؤال تنبؤ وأطلب التبرير دائمًا.', hours: spec.hours || ''});
+  if (spec.solo) { const r = rng(7); const cs = codes('S', spec.scores[0].length); for (const v of [1, 2]) await put('soloscores', 'ss' + v, {cycleId: 'c1', lessonId: v === 1 ? 'le1' : 'le2', lessonVersion: v, group: 'فصل التطوير', date: today(), scores: Object.fromEntries(cs.map((c, i) => [c, spec.scores[v - 1][i]]))}); }
+  if (spec.ai) await put('ai', 'ai1', {purpose: 'solo', cycleId: 'c1', lessonId: 'le1', prompt: '(طلب تجريبي)', output: 'السؤال 3 علائقي؛ لا يوجد سؤال تجريدي ممتد. مقترح: «صمّمي خوارزمية لآلة بيع تتحقق من الرصيد قبل الصرف وفسّري موضع الشرط».', judgment: 'modify', reason: 'المقترح مناسب لكن صغناه بسياق مألوف للطالبات', adopted: 'مهمة نقل: آلة البيع'});
+  if (spec.research) {
+    const r = rng(11); const g = [{id: 'gp', name: '1/1 فصل التطوير', role: 'single', kind: 'pilot'}, {id: 'ge', name: '1/2 التجريبية', role: 'exp', kind: 'formal'}, {id: 'gc', name: '1/3 الضابطة', role: 'ctrl', kind: 'formal'}];
+    await pr.collection('research').doc('design').set({title: 'فاعلية التدريس المصمم وفق تصنيف SOLO عبر بحث الدرس المدعوم بالذكاء الاصطناعي التوليدي في تنمية عمق الفهم المفاهيمي لدى طالبات المرحلة الثانوية: دراسة مختلطة', questions: 'ما فاعلية التدريس المصمم وفق SOLO في تنمية عمق الفهم المفاهيمي مقارنة بالتدريس المعتاد؟\nكيف طوّر الفريق تصميم التدريس وفق SOLO عبر دورات بحث الدرس؟\nكيف استخدمت المعلمات مخرجات الذكاء الاصطناعي التوليدي في التخطيط والمراجعة؟\nكيف يفسّر تحليل عملية التطوير الفروق في عمق الفهم؟', method: 'mixed', quantDesign: 'two', mixedType: 'مدمج QUAN(qual)', phases: 'الإعداد ← تطوير التدخل (دورات بحث الدرس في فصل التطوير) ← اختبار الفاعلية (قبلي، تدريس مطوّر مقابل معتاد، بعدي) ← التحليل والدمج', limits: 'تُنسب النتيجة إلى التدخل المتكامل لا إلى عنصر منفرد. بيانات التطوير منفصلة عن التجربة الرئيسة. يُوثّق التدريس المعتاد ودرجة الالتزام بالتنفيذ.', groups: g, measures: [{id: 'm1', name: 'مهام أداء وفق SOLO', items: 4, max: 4}], ethics: {approval: 'تجريبي-001', approvalDate: today(), permission: 'إذن تجريبي', consents: 'موافقات طوعية مكتوبة (تجريبية)'}, createdBy: ME.uid, createdAt: nowIso()});
+    const gen = (base, n, from) => Object.fromEntries(codes('S', n, from).map(c => [c, [0, 1, 2, 3].map(() => Math.max(0, Math.min(4, Math.round(base + (r() - 0.5) * 2.2))))]));
+    const sets = [['ge', 'pre', 1.4, 101], ['ge', 'post', 2.2, 101], ['gc', 'pre', 1.5, 201], ['gc', 'post', 1.8, 201]];
+    for (const [gid, time, base, from] of sets) await pr.collection('research').doc(`sc_m1_${gid}_${time}`).set({kind: 'scores', measureId: 'm1', groupId: gid, time, data: gen(base, 14, from), createdBy: ME.uid, createdAt: nowIso()});
+  }
+  return pid;
+}
+ACT.demos = async b => {
+  if (b.dataset.busy) return; b.dataset.busy = 1; b.disabled = true; toast('يجري إنشاء المشاريع التجريبية…');
+  const ids = []; for (const sp of DEMOS) { const id = await seedDemo(sp); if (!id) break; ids.push(id); }
+  if (ids.length) { S.pid = ids[0]; store.set('pid', ids[0]); S.subKey = ''; S.cycleId = 'c1'; store.set('cycle', 'c1'); if (S.projects.some(p => p.id === ids[0])) selectProject(ids[0]); S.view = 'dash'; store.set('view', 'dash'); toast('أُنشئت ' + ids.length + ' مشاريع تجريبية. بدّل بينها من القائمة الجانبية.'); render(); }
+};
+
+/* ---------- after each render, and start-up ---------- */
+const invPending = new Set();
+function afterRender() {
+  S.invited.forEach(p => {
+    if (S.invRoles[p.id] || invPending.has(p.id)) return; invPending.add(p.id);
+    db.collection('projects').doc(p.id).collection('invites').doc(ME.email).get()
+      .then(d => { S.invRoles[p.id] = d.exists ? (d.data().roles || ['teacher']) : ['teacher']; schedule(); })
+      .catch(() => { S.invRoles[p.id] = ['teacher']; });
+  });
+}
+(async function boot() {
+  try { await db.collection('users').doc(ME.uid).set({email: ME.email, name: ME.name || '', lastSeen: nowIso()}, {merge: true}); } catch (x) { console.warn(x); }
+  watchProjects(); render();
 })();
+(() => { const mb = $('#menuBtn'); if (mb) mb.addEventListener('click', () => { const r = $('.rail'); const o = r.classList.toggle('open'); mb.setAttribute('aria-expanded', o); }); })();
+if (window.BURHAN_NEWNAME && B.auth.currentUser) B.auth.currentUser.updateProfile({displayName: window.BURHAN_NEWNAME}).catch(() => {});
+
 })();
