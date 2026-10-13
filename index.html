@@ -325,6 +325,7 @@ th{font-size:13px;color:var(--muted);font-weight:600}
 .repcard.on{border-color:var(--accent);background:var(--accent-soft)}
 .repcard b{color:var(--accent);font-size:16px}
 .repcard select{min-height:40px;border-radius:8px;border:1px solid var(--line);padding:0 8px;font:inherit}
+.exbanner{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:12px 16px;margin-bottom:12px;border-radius:12px;background:var(--amber-soft);border:1px solid var(--amber);color:var(--fg)}
 </style>
 </head><body>
 <div class="shell" dir="rtl" lang="ar" id="app">
@@ -377,7 +378,7 @@ th{font-size:13px;color:var(--muted);font-weight:600}
     if (!u) { if (booted) location.reload(); $('gate').hidden = false; return; }
     if (booted) return; booted = true; $('gate').hidden = true;
     window.BURHAN = {auth, db, user: {uid: u.uid, email: String(u.email || '').toLowerCase(), name: window.BURHAN_NEWNAME || u.displayName || ''}};
-    const s = document.createElement('script'); s.src = 'app.js?v=202610131941'; document.body.appendChild(s);
+    const s = document.createElement('script'); s.src = 'app.js?v=202610132103'; document.body.appendChild(s);
   });
 })();
 </script>

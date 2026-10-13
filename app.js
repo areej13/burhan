@@ -1,4 +1,4 @@
-/* Burhan v2 — built 2026-10-13 19:41 */
+/* Burhan v2 — built 2026-10-13 21:03 */
 (function () {
 "use strict";
 /* =========================================================
@@ -80,6 +80,22 @@ const mod = k => !!(S.P && S.P.modules && S.P.modules[k]);
 const isManager = () => !!(S.P && (S.P.managerUids || []).includes(ME.uid));
 const isResearcher = () => !!(S.P && (S.P.researcherUids || []).includes(ME.uid));
 const meMember = () => D.members.find(m => m.id === ME.uid);
+/* What each role may do inside a project. Managers (leader, facilitator) may do everything. */
+const CAPS = [
+  ['lessons', 'كتابة خطط الدروس ونسخها وبيانات الدورة', ['teacher', 'content']],
+  ['obs', 'تسجيل أدلة الملاحظة', ['teacher', 'content', 'observer', 'researcher', 'reviewer']],
+  ['solo', 'رصد مستويات SOLO', ['teacher', 'observer', 'researcher']],
+  ['decide', 'اقتراح قرارات التحسين', ['teacher', 'content', 'observer', 'reviewer', 'researcher']],
+  ['approve', 'اعتماد قرارات التحسين', []],
+  ['meetings', 'كتابة محاضر الاجتماعات', []],
+  ['reflect', 'كتابة التأملات', ['teacher', 'content', 'observer', 'reviewer', 'researcher']],
+  ['ai', 'استخدام مساعد الذكاء الاصطناعي', ['teacher', 'content', 'researcher']],
+  ['reports', 'عرض التقارير وتصديرها', ['teacher', 'content', 'observer', 'reviewer', 'researcher']],
+  ['research', 'مساحة الباحث', ['researcher']],
+  ['manage', 'إدارة المشروع والفريق والدورات والصلاحيات', []]];
+const myRoles = () => (meMember() || {}).roles || [];
+const can = k => { if (inExample() || isManager()) return true; const c = CAPS.find(x => x[0] === k); return !!c && myRoles().some(r => c[2].includes(r)); };
+const canNote = k => { const c = CAPS.find(x => x[0] === k); const who = ['قائد الفريق', 'الميسّر'].concat((c ? c[2] : []).map(r => ROLE[r])); return `<div class="note small">${esc(c ? c[1] : '')}: صلاحية ${esc(who.join('، '))}. اطلب من قائد الفريق تعديل دورك إن احتجت.</div>`; };
 const memberName = uid => { const m = D.members.find(x => x.id === uid); return m ? (m.name || m.email) : (uid === ME.uid ? (ME.name || ME.email) : '—'); };
 const curCycle = () => D.cycles.find(c => c.id === S.cycleId) || D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).find(c => c.status !== 'closed') || D.cycles[0] || null;
 const cycleLabel = c => c ? `الدورة ${c.n || ''}${c.title ? ' · ' + c.title : ''}` : '—';
@@ -88,10 +104,12 @@ const stepState = c => STEPS.map(s => ({s, ok: !!(S.P && s.done(S.P, c))}));
 const nextStep = c => { const st = stepState(c); return st.find(x => !x.ok) || null; };
 
 /* ---------- data access ---------- */
-const pref = (pid = S.pid) => db.collection('projects').doc(pid);
+const inExample = () => S.example != null;
+const pref = (pid = S.pid) => { if (inExample()) throw Object.assign(new Error('EXAMPLE'), {code: 'example'}); return db.collection('projects').doc(pid); };
 const coll = c => pref().collection(c);
 function dbErr(x) {
   const c = x && x.code;
+  if (c === 'example') { toast('هذا مشروع نموذجي للاطلاع فقط. استخدمه قالبًا لإنشاء مشروعك ثم عدّل فيه ما تشاء.'); return; }
   if (c === 'permission-denied') toast('ليست لديك صلاحية لهذا الإجراء في هذا المشروع.');
   else toast('تعذّر الحفظ مؤقتًا. حاول مرة أخرى.');
   console.warn(x);
@@ -109,6 +127,7 @@ const snapList = snap => snap.docs.map(d => Object.assign({id: d.id}, d.data()))
 function watchProjects() {
   db.collection('projects').where('memberUids', 'array-contains', ME.uid).onSnapshot(s => {
     S.projects = snapList(s).sort(byNew);
+    if (inExample()) { schedule(); return; }
     if (!S.pid || !S.projects.some(p => p.id === S.pid)) { if (!S.creating) selectProject(S.projects[0] ? S.projects[0].id : ''); return; }
     S.P = S.projects.find(p => p.id === S.pid);
     if (S.subKey !== subKeyOf(S.P)) selectProject(S.pid); else schedule();
@@ -117,7 +136,7 @@ function watchProjects() {
 }
 const subKeyOf = P => P ? [P.id, (P.managerUids || []).includes(ME.uid), (P.researcherUids || []).includes(ME.uid)].join('|') : '';
 function selectProject(pid) {
-  unsubProject.forEach(u => { try { u(); } catch (x) {} }); unsubProject = [];
+  unsubProject.forEach(u => { try { u(); } catch (x) {} }); unsubProject = []; S.example = null;
   COLLS.forEach(c => { D[c] = []; }); S.loaded = {};
   S.pid = pid; store.set('pid', pid); S.P = S.projects.find(p => p.id === pid) || null; S.subKey = subKeyOf(S.P);
   if (!pid) { schedule(); return; }
@@ -142,7 +161,7 @@ const ICONS = {
   lib: '<path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 2.5 15-3.5 1z"/>'};
 const icon = k => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ''}</svg>`;
 function navItems() {
-  const g = [['المنصة', [['dash', 'لوحة التحكم', 'home'], ['projects', 'مشاريعي', 'folder']]]];
+  const g = [['المنصة', [['dash', 'لوحة التحكم', 'home'], ['projects', 'مشاريعي', 'folder'], ['examples', 'المشاريع النموذجية', 'lib']]]];
   if (S.P) {
     g.push(['المشروع', [['team', 'الفرق', 'users'], ['schedule', 'الجدول التنفيذي', 'calendar'], ['lessons', 'الدروس البحثية', 'book'], ['obs', 'الملاحظة والأدلة', 'eye'], ['improve', 'التحسين والتأمل', 'refl'], ['reports', 'التقارير والتحليلات', 'chart']]]);
     const m = [];
@@ -158,7 +177,7 @@ function renderNav() {
   const items = navItems(); const keys = items.flatMap(g => g[1].map(i => i[0]));
   if (!keys.includes(S.view)) S.view = 'dash';
   $('#nav').innerHTML = items.map(([g, list]) => `<div class="navgroup">${esc(g)}</div>` + list.map(([k, l, ic]) => `<button class="nav" data-act="go" data-v="${k}"${k === S.view ? ' aria-current="page"' : ''}>${icon(ic)}<span>${esc(l)}</span></button>`).join('')).join('');
-  $('#projbox').innerHTML = S.projects.length ? `المشروع الحالي<select id="projSel" aria-label="المشروع الحالي">${opts(S.projects.map(p => [p.id, p.name]), S.pid)}</select>` : 'لا مشاريع بعد';
+  $('#projbox').innerHTML = inExample() ? `تستعرض الآن<br><b>مشروعًا نموذجيًا</b><br><button class="btn ghost small" data-act="exitexample" style="margin-top:6px">العودة إلى مشاريعي</button>` : S.projects.length ? `المشروع الحالي<select id="projSel" aria-label="المشروع الحالي">${opts(S.projects.map(p => [p.id, p.name]), S.pid)}</select>` : 'لا مشاريع بعد';
   const m = meMember();
   $('#who').innerHTML = `<b>${esc(ME.name || (m && m.name) || ME.email)}</b><br>${S.P ? esc((m && (m.roles || []).map(r => ROLE[r]).join('، ')) || '') : ''}<br><button data-act="signout">تسجيل الخروج</button>`;
   const qb = [['dash', 'الرئيسة', 'home'], ['obs', 'ملاحظة', 'eye'], ['lessons', 'الدروس', 'book'], ['improve', 'التحسين', 'refl']].filter(x => keys.includes(x[0]));
@@ -168,7 +187,7 @@ const V = {};
 function render() {
   renderNav();
   const v = $('#view'); delete v.dataset.stale;
-  try { v.innerHTML = (V[S.view] || V.dash)(); } catch (x) { console.error(x); v.innerHTML = empty('حدث خطأ في عرض هذه الصفحة: ' + esc(x.message)); }
+  try { v.innerHTML = (inExample() && S.view !== 'examples' && typeof exampleBanner === 'function' ? exampleBanner() : '') + (V[S.view] || V.dash)(); } catch (x) { console.error(x); v.innerHTML = empty('حدث خطأ في عرض هذه الصفحة: ' + esc(x.message)); }
   S.dirty = false;
   if (typeof afterRender === 'function') afterRender();
 }
@@ -238,10 +257,10 @@ function nextStepCard(c) {
 V.dash = () => {
   const inv = S.invited.filter(p => !store.get('hideInv', []).includes(p.id));
   const invHtml = inv.length ? `<section class="panel hero"><h2>دعوات للانضمام</h2><div class="ledger">${inv.map(p => { const r = S.invRoles[p.id]; return `<div class="rec"><div class="row between"><b>${esc(p.name)}</b><span class="small muted">${esc(p.org || '')} · ${esc(p.stage || '')} · ${esc((p.subjects || []).join('، '))}</span></div><div class="meta">الأدوار المقترحة لك: ${r ? esc(r.map(x => ROLE[x] || x).join('، ')) : '…'}</div><div class="row"><button class="btn small" data-act="accept" data-id="${esc(p.id)}">قبول الانضمام</button><button class="btn ghost small" data-act="hideinv" data-id="${esc(p.id)}">ليس الآن</button></div></div>`; }).join('')}</div></section>` : '';
-  if (!S.projects.length) return `${head('أهلًا بك في بُرهان', 'منصة لإدارة بحث الدرس والتطوير المهني التشاركي وتحليل أدلة التعلم، لأي مادة ولأي مرحلة ولأي فريق.')}
+  if (!S.projects.length && !inExample()) return `${head('أهلًا بك في بُرهان', 'منصة لإدارة بحث الدرس والتطوير المهني التشاركي وتحليل أدلة التعلم، لأي مادة ولأي مرحلة ولأي فريق.')}
     ${invHtml}
     <section class="panel hero"><h2>ابدأ مشروعك الأول</h2><p>مشروع بحث الدرس يجمع فريقك وهدفه البعيد ومشكلة التعلم ودوراته. تختار في المعالج الوحدات الاختيارية التي تحتاجها فقط.</p>
-    <div class="row"><button class="btn bigbtn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">جرّب المنصة بثلاثة مشاريع تجريبية</button></div></section>
+    <div class="row"><button class="btn bigbtn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="go" data-v="examples">استعرض المشاريع النموذجية</button></div><p class="small muted">المشاريع النموذجية جاهزة للاطلاع دون إنشاء أي شيء، ويمكنك استخدام أي منها قالبًا لمشروعك.</p></section>
     ${howItWorks()}`;
   if (!S.P) return `${head('لوحة التحكم')}${invHtml}${empty('اختر مشروعًا من القائمة.')}`;
   const P = S.P; const broken = P.createdBy === ME.uid && S.loaded && S.loaded.members && !D.members.length;
@@ -286,7 +305,7 @@ ACT.accept = async b => {
 V.projects = () => {
   if (S.wiz) return wizardView();
   return `${head('مشاريعي', 'كل مشروع مساحة عمل مستقلة: فريقه ودوراته ودروسه وأدلته ووحداته الاختيارية. يمكنك أن تكون عضوًا في أكثر من مشروع بأدوار مختلفة.')}
-  <div class="row"><button class="btn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">إنشاء ثلاثة مشاريع تجريبية</button></div>
+  <div class="row"><button class="btn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="go" data-v="examples">المشاريع النموذجية والقوالب</button></div>
   <section class="panel"><div class="ledger">${S.projects.map(p => { const mine = p.id === S.pid ? meMember() : null; return `<div class="rec${p.id === S.pid ? ' mine' : ''}"><div class="row between"><b style="font-size:17px">${esc(p.name)}</b><span class="row">${p.id === S.pid ? pill('المشروع الحالي', 'good') : `<button class="btn small" data-act="openproj" data-id="${esc(p.id)}">فتح</button>`}${p.createdBy === ME.uid ? `<button class="btn ghost small" data-act="delproj" data-id="${esc(p.id)}">حذف</button>` : ''}</span></div>
     <div class="meta"><span>${esc(p.org || '—')}</span><span>${esc(p.stage || '')}</span><span>${esc((p.subjects || []).join('، '))}</span><span>${(p.memberUids || []).length} عضو</span>${(p.managerUids || []).includes(ME.uid) ? pill('إدارة') : ''}</div>
     <div class="row">${MODULES.filter(m => p.modules && p.modules[m[0]]).map(m => pill(m[1])).join(' ')}</div>${mine ? '' : ''}</div>`; }).join('') || empty('لا مشاريع بعد.')}</div></section>`;
@@ -347,22 +366,26 @@ FORM.wiz = async o => {
   delete o.wRole; Object.assign(S.wiz.data, o);
   if (S.wiz.step === 0 && !S.wiz.data.name) { toast('اكتب اسم المشروع.'); return false; }
   if (S.wiz.step < WIZ.length - 1) { S.wiz.step++; store.set('wizDraft', S.wiz); return true; }
-  const pid = await createProject(S.wiz.data);
+  const pid = await createProject(S.wiz.data, S.wiz.extra || {});
   if (pid) { S.wiz = null; store.set('wizDraft', null); toast('أُنشئت مساحة العمل.'); S.view = 'dash'; store.set('view', 'dash'); }
   return !!pid;
 };
-async function createProject(d, extra = {}) {
-  const pid = nid('p'); S.creating = true;
+function projectDoc(d, extra = {}) {
   const myRoles = (d.myRoles && d.myRoles.length) ? d.myRoles : ['leader'];
   const mods = {}; MODULES.forEach(([k]) => { mods[k] = (d.modules || []).includes(k); });
   const team = d.team || [];
-  const doc = Object.assign({
+  return Object.assign({
     name: d.name, org: d.org || '', stage: d.stage || '', subjects: wizSubjects(d), grade: d.grade || '', year: d.year || '', duration: d.duration || '',
     goals: {longTerm: d.longTerm || '', bigIdeas: d.bigIdeas || '', habits: d.habits || '', successIndicators: d.successIndicators || ''},
     problem: {statement: d.statement || '', evidence: d.evidence || '', learners: d.learners || '', questions: d.questions || ''},
     schedule: {lessonsPerWeek: d.lessonsPerWeek || '', lessonMinutes: d.lessonMinutes || '', cycles: Number(d.cycles) || 1, startDate: d.startDate || '', meetingDay: d.meetingDay || '', meetingTime: d.meetingTime || '', meetingMinutes: d.meetingMinutes || '', resources: d.resources || ''},
     modules: mods, framework: mods.solo ? 'solo' : 'none', criteria: [], indicators: DEFAULT_INDICATORS.slice(), customObsFields: [], researchShare: {lessons: true, observations: false, decisions: true, meetings: false, ai: true},
     createdBy: ME.uid, createdAt: nowIso(), memberUids: [ME.uid], managerUids: [ME.uid], researcherUids: myRoles.includes('researcher') ? [ME.uid] : [], invitedEmails: team.map(t => t.email)}, extra);
+}
+async function createProject(d, extra = {}) {
+  const pid = nid('p'); S.creating = true;
+  const myRoles = (d.myRoles && d.myRoles.length) ? d.myRoles : ['leader'];
+  const team = d.team || []; const doc = projectDoc(d, extra);
   try {
     await db.collection('projects').doc(pid).set(doc);
     const pr = db.collection('projects').doc(pid);
@@ -1193,10 +1216,10 @@ const DEMOS = [
    decision: 'إضافة جدول «ما أغيّره / ما أقيسه / ما أثبّته» في ورقة التصميم', proposeOnly: true}];
 async function seedDemo(spec) {
   const pid = await createProject(spec.wiz, {demo: true, indicators: spec.indicators || DEFAULT_INDICATORS.slice(), customObsFields: spec.customObsFields || []}); if (!pid) return null;
-  try { await fillDemo(pid, spec); return pid; } catch (x) { await failedCreate(pid, x); return null; }
+  try { await fillDemo(db.collection('projects').doc(pid), spec); return pid; } catch (x) { await failedCreate(pid, x); return null; }
 }
-async function fillDemo(pid, spec) {
-  const pr = db.collection('projects').doc(pid); const put = (c, id, data) => pr.collection(c).doc(id).set(Object.assign({createdBy: ME.uid, createdAt: nowIso()}, data));
+async function fillDemo(pr, spec) {
+  const put = (c, id, data) => pr.collection(c).doc(id).set(Object.assign({createdBy: ME.uid, createdAt: nowIso()}, data));
   await pr.collection('cycles').doc('c1').set({title: '', topic: spec.topic, status: 'active', lessonDate: today(), teacherUid: ME.uid, observers: [ME.uid], contentStudy: 'دراسة الفريق للموضوع في المنهج: المفاهيم الأساسية والمتطلبات السابقة والأخطاء الشائعة وتدرّج الفكرة.'}, {merge: true});
   await put('lessons', 'le1', Object.assign({cycleId: 'c1', version: 1, familyId: 'le1', parentId: '', topic: spec.topic}, spec.lesson));
   const addObs = async (list, v) => { const ids = []; for (const [focus, indicator, direct, interpretation, sl, tag, custom] of list) { const d = {cycleId: 'c1', lessonId: v === 1 ? 'le1' : 'le2', lessonVersion: v, focus, indicator, direct, interpretation, tag: tag || '', time: ''}; if (spec.solo) d.soloLevel = sl; if (custom) d.custom = custom; const id = nid('ob'); ids.push(id); await put('observations', id, d); } return ids; };
@@ -1217,7 +1240,7 @@ async function fillDemo(pid, spec) {
     const sets = [['ge', 'pre', 1.4, 101], ['ge', 'post', 2.2, 101], ['gc', 'pre', 1.5, 201], ['gc', 'post', 1.8, 201]];
     for (const [gid, time, base, from] of sets) await pr.collection('research').doc(`sc_m1_${gid}_${time}`).set({kind: 'scores', measureId: 'm1', groupId: gid, time, data: gen(base, 14, from), createdBy: ME.uid, createdAt: nowIso()});
   }
-  return pid;
+  return true;
 }
 ACT.demos = async b => {
   if (b.dataset.busy) return; b.dataset.busy = 1; b.disabled = true; toast('يجري إنشاء المشاريع التجريبية…');
@@ -1237,6 +1260,180 @@ ACT.repairproj = async b => {
     if (!D.cycles.length) { const n = Math.max(1, Math.min(12, Number((P.schedule || {}).cycles) || 1)); for (let k = 1; k <= n; k++) await pr.collection('cycles').doc('c' + k).set({n: k, title: '', status: k === 1 ? 'active' : 'planned', topic: '', createdBy: ME.uid, createdAt: nowIso()}); }
     toast('اكتمل إنشاء المشروع.');
   } catch (x) { b.disabled = false; if (x.code === 'permission-denied') toast('ما زالت قواعد الأمان القديمة مفعّلة. انشري القواعد الجديدة في Firebase أولًا.'); else dbErr(x); }
+};
+
+/* =========================================================
+   Team access: the leader creates each member's account with a
+   temporary password; the member signs in, is asked to choose a
+   new password, and joins the project automatically.
+   Role permissions are applied to every form and button.
+   ========================================================= */
+const tempPassword = () => { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ', b = 'abcdefghjkmnpqrstuvwxyz', d = '23456789'; const p = (s, n) => Array.from({length: n}, () => s[Math.floor(Math.random() * s.length)]).join(''); return 'Br-' + p(a, 2) + p(b, 3) + p(d, 3); };
+let secApp = null;
+async function createMemberAccount(email, name) {
+  const pw = tempPassword();
+  try {
+    secApp = secApp || firebase.apps.find(a => a.name === 'burhan-admin') || firebase.initializeApp(window.BURHAN_FIREBASE, 'burhan-admin');
+    const auth = secApp.auth(); try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (x) {}
+    const cred = await auth.createUserWithEmailAndPassword(email, pw);
+    try { await cred.user.updateProfile({displayName: name || ''}); } catch (x) {}
+    await secApp.firestore().collection('users').doc(cred.user.uid).set({email, name: name || '', mustChangePassword: true, createdByLeader: ME.uid, createdAt: nowIso()});
+    await auth.signOut();
+    return {email, name, pw};
+  } catch (x) {
+    if (x && x.code === 'auth/email-already-in-use') return {email, name, exists: true};
+    console.warn(x); return {email, name, error: (x && x.code) || 'error'};
+  }
+}
+function credsPanel() {
+  const list = S.newCreds || []; if (!list.length) return '';
+  const site = location.origin + location.pathname;
+  const text = list.filter(c => c.pw).map(c => `${c.name || ''}\nالموقع: ${site}\nالبريد: ${c.email}\nكلمة المرور المؤقتة: ${c.pw}\n(سيُطلب منك تغييرها عند أول دخول)`).join('\n\n');
+  return `<section class="panel hero"><h2>بيانات دخول الأعضاء الجدد</h2>
+    <p class="small">أرسلي لكل عضو بريده وكلمة مروره المؤقتة. <b>لن تظهر كلمات المرور مرة أخرى</b> بعد مغادرة هذه الصفحة. عند أول دخول يُطلب من العضو اختيار كلمة مرور جديدة، ويدخل المشروع مباشرة بالدور الذي حددتِه.</p>
+    <table><thead><tr><th>العضو</th><th>البريد</th><th>كلمة المرور المؤقتة</th></tr></thead><tbody>${list.map(c => `<tr><td>${esc(c.name || '')}</td><td dir="ltr">${esc(c.email)}</td><td dir="ltr">${c.pw ? `<b>${esc(c.pw)}</b>` : c.exists ? '<span class="small">له حساب سابق: يدخل بكلمة مروره وتظهر له الدعوة</span>' : `<span class="small">تعذّر الإنشاء (${esc(c.error)})</span>`}</td></tr>`).join('')}</tbody></table>
+    ${text ? `<textarea id="credsText" rows="6" readonly dir="rtl">${esc(text)}</textarea><div class="row"><button class="btn small" data-act="copycreds">نسخ الرسالة</button><button class="btn ghost small" data-act="hidecreds">تم، أخفِ كلمات المرور</button></div>` : '<div class="row"><button class="btn ghost small" data-act="hidecreds">إخفاء</button></div>'}</section>`;
+}
+ACT.copycreds = async () => { const t = $('#credsText'); try { await navigator.clipboard.writeText(t.value); toast('نُسخت بيانات الدخول.'); } catch (x) { t.select(); toast('حدّد النص وانسخه.'); } };
+ACT.hidecreds = () => { S.newCreds = null; render(); };
+ACT.resetpw = async b => { try { await B.auth.sendPasswordResetEmail(b.dataset.email); toast('أُرسل رابط تعيين كلمة المرور إلى ' + b.dataset.email); } catch (x) { toast('تعذّر الإرسال: ' + (x.code || '')); } };
+
+/* Team page: account creation in the invite form, credentials panel, permissions matrix */
+const _vteam = V.team;
+V.team = () => {
+  let h = _vteam();
+  if (!S.P) return h;
+  h = h.replace('<div><button class="btn" type="submit">إرسال الدعوة</button></div></form>', `<label class="checks"><label><input type="checkbox" name="mkacct" value="1" checked>أنشئ له حسابًا بكلمة مرور مؤقتة (يدخل بها ثم يغيّرها)</label></label><div><button class="btn" type="submit">إضافة العضو</button></div></form>`);
+  h = h.replace(/<button class="btn ghost small" data-act="rminvite" data-id="([^"]+)">إلغاء الدعوة<\/button>/g, (m, id) => `<span class="row"><button class="btn ghost small" data-act="resetpw" data-email="${id}">إرسال رابط تعيين كلمة المرور</button>${m}</span>`);
+  return credsPanel() + h + permissionsMatrix();
+};
+function permissionsMatrix() {
+  const roles = ROLES.filter(r => !MANAGER_ROLES.includes(r[0]));
+  return `<section class="panel"><h2>الصلاحيات حسب الدور</h2><p class="small muted">قائد الفريق والميسّر لهما كل الصلاحيات. يغيّر القائد دور أي عضو من جدول الفريق أعلاه، وتتغير صلاحياته فورًا. ويستطيع كل عضو تعديل سجلاته وحذفها، والقائد يعدّل الجميع.</p>
+  <div class="scroll"><table><thead><tr><th>الصلاحية</th><th>القائد والميسّر</th>${roles.map(r => `<th>${esc(r[1])}</th>`).join('')}</tr></thead><tbody>${CAPS.map(([k, l, rs]) => `<tr><td>${esc(l)}</td><td>✓</td>${roles.map(r => `<td>${rs.includes(r[0]) ? '✓' : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+}
+const _invite = FORM.invite;
+FORM.invite = async (o, f) => {
+  const r = await _invite(o, f); if (r === false) return false;
+  if ((o.mkacct || []).length) { toast('يجري إنشاء الحساب…'); const c = await createMemberAccount(String(o.email).toLowerCase(), o.name); S.newCreds = (S.newCreds || []).concat(c); }
+};
+
+/* Wizard: create accounts for the team entered in step 2 */
+const _wizView = wizardView;
+wizardView = () => { let h = _wizView(); if (S.wiz && S.wiz.step === 1) h = h.replace('<div><button type="button" class="btn ghost small" data-act="wizadd">إضافة العضو</button></div>', `<div><button type="button" class="btn ghost small" data-act="wizadd">إضافة العضو</button></div><label class="checks"><label><input type="checkbox" name="mkacct" value="1"${S.wiz.data.mkacct === undefined || (S.wiz.data.mkacct || []).length ? ' checked' : ''}>أنشئ حسابات للأعضاء بكلمات مرور مؤقتة عند إنشاء المشروع</label></label>`); return h; };
+const _fwiz = FORM.wiz;
+FORM.wiz = async (o, f) => {
+  const last = S.wiz && S.wiz.step === WIZ.length - 1; const data = S.wiz ? Object.assign({}, S.wiz.data, o) : {};
+  const ok = await _fwiz(o, f);
+  if (last && ok && (data.mkacct === undefined || (data.mkacct || []).length) && (data.team || []).length) {
+    toast('يجري إنشاء حسابات الأعضاء…'); const out = [];
+    for (const t of data.team) out.push(await createMemberAccount(t.email, t.name));
+    S.newCreds = out; S.view = 'team'; store.set('view', 'team');
+  }
+  return ok;
+};
+
+/* Member side: forced password change and automatic joining */
+async function checkMustChange() {
+  try { const d = await db.collection('users').doc(ME.uid).get(); S.mustChange = !!(d.exists && d.data().mustChangePassword); } catch (x) { S.mustChange = false; }
+  if (S.mustChange) render();
+}
+V.changepw = () => `${head(S.mustChange ? 'اختر كلمة مرور جديدة' : 'تغيير كلمة المرور', S.mustChange ? 'دخلت بكلمة مرور مؤقتة أرسلها قائد الفريق. اختر الآن كلمة مرور خاصة بك قبل المتابعة.' : '')}
+  <form data-form="changepw" class="panel" style="max-width:460px">${field('كلمة المرور الجديدة', inp('pw1', '', 'type="password" required minlength="6" dir="ltr" autocomplete="new-password"'), '6 أحرف على الأقل')}${field('تأكيدها', inp('pw2', '', 'type="password" required dir="ltr" autocomplete="new-password"'))}<div><button class="btn" type="submit">حفظ كلمة المرور</button></div></form>`;
+FORM.changepw = async o => {
+  if (!o.pw1 || o.pw1.length < 6) { toast('كلمة المرور قصيرة: 6 أحرف على الأقل.'); return false; }
+  if (o.pw1 !== o.pw2) { toast('كلمتا المرور غير متطابقتين.'); return false; }
+  try { await B.auth.currentUser.updatePassword(o.pw1); }
+  catch (x) { toast(x.code === 'auth/requires-recent-login' ? 'لأمانك: سجّل الخروج ثم ادخل من جديد، وبعدها غيّر كلمة المرور.' : 'تعذّر التغيير: ' + (x.code || '')); return false; }
+  try { await db.collection('users').doc(ME.uid).set({mustChangePassword: false, passwordChangedAt: nowIso()}, {merge: true}); } catch (x) {}
+  S.mustChange = false; toast('حُفظت كلمة المرور الجديدة.'); S.view = 'dash'; store.set('view', 'dash');
+};
+const _render0 = render;
+render = () => { if (S.mustChange && S.view !== 'changepw') S.view = 'changepw'; _render0(); };
+const _renderNav0 = renderNav;
+renderNav = () => { _renderNav0(); if (S.mustChange) { $('#nav').innerHTML = ''; $('#qbar').innerHTML = ''; } };
+const _navItems0 = navItems;
+navItems = () => { const g = _navItems0(); g[0][1].push(['changepw', 'تغيير كلمة المرور', 'gear']); return g; };
+
+const autoTried = new Set();
+async function acceptInvite(p) {
+  const invRef = db.collection('projects').doc(p.id).collection('invites').doc(ME.email);
+  const inv = await invRef.get(); const roles = inv.exists ? (inv.data().roles || ['teacher']) : ['teacher']; const school = inv.exists ? (inv.data().school || '') : '';
+  await db.collection('projects').doc(p.id).collection('members').doc(ME.uid).set({uid: ME.uid, email: ME.email, name: ME.name || (inv.exists && inv.data().name) || ME.email, roles, school, joinedAt: nowIso()});
+  const up = {memberUids: uniq((p.memberUids || []).concat(ME.uid)), invitedEmails: (p.invitedEmails || []).filter(e => e !== ME.email), managerUids: p.managerUids || [], researcherUids: p.researcherUids || []};
+  if (roles.some(r => MANAGER_ROLES.includes(r))) up.managerUids = uniq(up.managerUids.concat(ME.uid));
+  if (roles.includes('researcher')) up.researcherUids = uniq(up.researcherUids.concat(ME.uid));
+  await db.collection('projects').doc(p.id).set(up, {merge: true});
+}
+ACT.accept = async b => { const p = S.invited.find(x => x.id === b.dataset.id); if (!p) return; b.disabled = true; try { await acceptInvite(p); toast('انضممت إلى «' + p.name + '».'); S.pid = p.id; store.set('pid', p.id); S.subKey = ''; } catch (x) { dbErr(x); b.disabled = false; } };
+async function autoAccept() {
+  for (const p of S.invited) { if (autoTried.has(p.id)) continue; autoTried.add(p.id);
+    try { await acceptInvite(p); toast('انضممت إلى «' + p.name + '» بالدور الذي حدده قائد الفريق.'); if (!S.projects.length || !S.pid) { S.pid = p.id; store.set('pid', p.id); S.subKey = ''; } } catch (x) { console.warn(x); } }
+}
+
+/* Role gates: forms and buttons the current member may not use are replaced by a short note */
+const FORM_CAP = {obs: 'obs', meeting: 'meetings', decision: 'decide', reflection: 'reflect', lesson: 'lessons', cycle: 'lessons', aibuild: 'ai', ailog: 'ai', aiedit: 'ai', soloscore: 'solo', crit: 'manage', invite: 'manage', roles: 'manage'};
+const ACT_CAP = {newlesson: 'lessons', newversion: 'lessons', addcycle: 'manage', decst: 'approve'};
+function applyGates() {
+  if (!S.P || inExample()) return;
+  $$('form[data-form]', $('#view')).forEach(f => { const k = FORM_CAP[f.dataset.form]; if (k && !can(k) && !(S.editRec && f.querySelector('[data-act=canceledit]'))) f.outerHTML = canNote(k); });
+  $$('[data-act]', $('#view')).forEach(b => { const k = ACT_CAP[b.dataset.act]; if (k && !can(k)) b.remove(); });
+  if (S.view === 'reports' && !can('reports')) $('#view').innerHTML = head('التقارير والتحليلات') + canNote('reports');
+}
+const _afterRender0 = afterRender;
+afterRender = () => { _afterRender0(); applyGates(); if (S.invited.length) autoAccept(); };
+
+checkMustChange();
+/* the credentials panel also shows on the dashboard, right after a project is created */
+const _vdash = V.dash;
+V.dash = () => credsPanel() + _vdash();
+
+/* =========================================================
+   Model projects: three complete Lesson Study projects that
+   anyone can browse (read-only, nothing is created), and use
+   as a template for a new project.
+   ========================================================= */
+const EX_INFO = [
+  {tag: 'ثانوي · فريق متعدد التخصصات · SOLO + ذكاء اصطناعي + بحث مختلط', shows: ['دورة كاملة: درس بنسختين وقرار تحسين مربوط بالأدلة', 'رصد مستويات SOLO وتحسّنها بين النسختين', 'سجل الذكاء الاصطناعي وحكم الفريق على المقترحات', 'مساحة الباحث: مجموعة تجريبية وضابطة وتحليل قبلي وبعدي']},
+  {tag: 'متوسط · فريق من المادة نفسها · بحث درس فقط', shows: ['مؤشرات ملاحظة خاصة بالقراءة', 'نسختان من الدرس وما تغيّر بينهما', 'سجل التطوير المهني وساعاته']},
+  {tag: 'ابتدائي · فريق من مدرستين · بطاقة ملاحظة مخصصة', shows: ['حقول ملاحظة إضافية يحددها الفريق', 'فريق من مدرستين ومشرف', 'قرار تحسين ينتظر اعتماد القائد']}];
+async function buildExample(i) {
+  const spec = DEMOS[i]; const mem = {};
+  const memPr = {collection: c => ({doc: id => ({set: async (data, opt) => { mem[c] = mem[c] || {}; mem[c][id] = Object.assign({}, opt && opt.merge ? mem[c][id] : {}, data); }})})};
+  const n = Math.max(1, Number(spec.wiz.cycles) || 1); mem.cycles = {};
+  for (let k = 1; k <= n; k++) mem.cycles['c' + k] = {n: k, title: '', status: k === 1 ? 'active' : 'planned', topic: '', createdBy: ME.uid, createdAt: nowIso()};
+  await fillDemo(memPr, spec);
+  const P = projectDoc(spec.wiz, {indicators: spec.indicators || DEFAULT_INDICATORS.slice(), customObsFields: spec.customObsFields || [], invitedEmails: [], memberUids: [ME.uid], managerUids: [ME.uid], researcherUids: spec.research ? [ME.uid] : []});
+  P.id = 'example-' + i;
+  mem.members = {[ME.uid]: {name: 'قائد الفريق (نموذج)', email: '', roles: spec.wiz.myRoles || ['leader'], school: spec.wiz.org}};
+  (spec.wiz.team || []).forEach((t, k) => { mem.members['m' + k] = {name: t.name, email: '', roles: t.roles, school: t.school || spec.wiz.org}; });
+  const Dx = {}; COLLS.forEach(c => { Dx[c] = Object.entries(mem[c] || {}).map(([id, v]) => Object.assign({id}, v)); });
+  return {P, Dx};
+}
+async function enterExample(i) {
+  const {P, Dx} = await buildExample(i);
+  unsubProject.forEach(u => { try { u(); } catch (x) {} }); unsubProject = [];
+  S.example = i; S.P = P; COLLS.forEach(c => { D[c] = Dx[c]; }); S.loaded = Object.fromEntries(COLLS.map(c => [c, true]));
+  S.cycleId = 'c1'; S.editRec = null; S.lessonEdit = null; S.compare = null; S.rep = null;
+  S.view = 'dash'; S.dirty = false; render(); window.scrollTo(0, 0);
+}
+function leaveExample() { const pid = S.pid && S.projects.some(p => p.id === S.pid) ? S.pid : (S.projects[0] || {}).id || ''; S.example = null; S.subKey = ''; selectProject(pid); }
+function exampleBanner() {
+  const i = S.example; return `<div class="exbanner"><div><b>مشروع نموذجي للاطلاع:</b> ${esc(DEMOS[i].wiz.name)}<br><span class="small">تجوّل في كل الصفحات كما يراها الفريق. لا يُحفظ أي تعديل هنا.</span></div><div class="row"><button class="btn small" data-act="usetemplate" data-i="${i}">استخدمه قالبًا لمشروعي</button><button class="btn ghost small" data-act="exitexample">العودة إلى مشاريعي</button></div></div>`;
+}
+V.examples = () => `${head('المشاريع النموذجية والقوالب', 'ثلاثة مشاريع بحث درس كاملة لمواد ومراحل مختلفة. استعرضها لترى كيف يعمل الفريق خطوة بخطوة، أو استخدم أيًّا منها قالبًا: يُنشأ مشروعك بالهدف والمشكلة والمؤشرات والوحدات نفسها، دون البيانات التجريبية، وتعدّل فيه ما تشاء.')}
+  <div class="repgrid">${DEMOS.map((d, i) => `<section class="panel"><h2 style="margin:0">${esc(d.wiz.name)}</h2><span class="small muted">${esc(EX_INFO[i].tag)}</span>
+    <ul class="small" style="margin:0;padding-inline-start:20px">${EX_INFO[i].shows.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+    <div class="row"><button class="btn small" data-act="viewexample" data-i="${i}">استعراض المشروع</button><button class="btn ghost small" data-act="usetemplate" data-i="${i}">استخدامه قالبًا</button></div></section>`).join('')}</div>
+  <section class="panel"><h2>ما الفرق بين الاستعراض والقالب؟</h2><p class="small"><b>الاستعراض</b> يفتح المشروع النموذجي بكل بياناته للاطلاع فقط، ولا يُنشئ شيئًا في حسابك. <b>القالب</b> يفتح معالج مشروع جديد معبّأً بإعدادات المشروع النموذجي (المادة والمرحلة والهدف البعيد ومشكلة التعلم ومؤشرات الملاحظة والوحدات)، فتعدّلها وتضيف فريقك ثم تنشئ مشروعك الحقيقي.</p></section>`;
+ACT.viewexample = async b => { b.disabled = true; try { await enterExample(Number(b.dataset.i)); } catch (x) { console.error(x); toast('تعذّر فتح المشروع النموذجي.'); b.disabled = false; } };
+ACT.exitexample = () => { leaveExample(); go('projects'); };
+ACT.usetemplate = b => {
+  const spec = DEMOS[Number(b.dataset.i)]; if (inExample()) leaveExample();
+  const w = spec.wiz;
+  S.wiz = {step: 0, data: Object.assign({}, w, {name: '', org: '', team: [], myRoles: (w.myRoles || ['leader']).filter(r => r !== 'researcher').concat(w.modules.includes('research') ? ['researcher'] : []), subjectsOther: ''}), extra: {indicators: (spec.indicators || DEFAULT_INDICATORS).slice(), customObsFields: (spec.customObsFields || []).slice()}};
+  store.set('wizDraft', null); S.view = 'projects'; store.set('view', 'projects'); render(); window.scrollTo(0, 0);
+  toast('عُبّئ المعالج من القالب. اكتب اسم مشروعك وعدّل ما تشاء.');
 };
 
 /* ---------- after each render, and start-up ---------- */
