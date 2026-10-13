@@ -1,4 +1,4 @@
-/* Burhan v2 — built 2026-10-13 00:11 */
+/* Burhan v2 — built 2026-10-13 19:41 */
 (function () {
 "use strict";
 /* =========================================================
@@ -118,14 +118,14 @@ function watchProjects() {
 const subKeyOf = P => P ? [P.id, (P.managerUids || []).includes(ME.uid), (P.researcherUids || []).includes(ME.uid)].join('|') : '';
 function selectProject(pid) {
   unsubProject.forEach(u => { try { u(); } catch (x) {} }); unsubProject = [];
-  COLLS.forEach(c => { D[c] = []; });
+  COLLS.forEach(c => { D[c] = []; }); S.loaded = {};
   S.pid = pid; store.set('pid', pid); S.P = S.projects.find(p => p.id === pid) || null; S.subKey = subKeyOf(S.P);
   if (!pid) { schedule(); return; }
   const P = S.P || {};
   COLLS.forEach(c => {
     if (c === 'research' && !(P.researcherUids || []).includes(ME.uid)) return;
     if (c === 'invites' && !(P.managerUids || []).includes(ME.uid)) return;
-    unsubProject.push(coll(c).onSnapshot(s => { D[c] = snapList(s); schedule(); }, x => console.warn(c, x)));
+    unsubProject.push(coll(c).onSnapshot(s => { D[c] = snapList(s); S.loaded[c] = true; schedule(); }, x => console.warn(c, x)));
   });
   schedule();
 }
@@ -172,7 +172,7 @@ function render() {
   S.dirty = false;
   if (typeof afterRender === 'function') afterRender();
 }
-function go(v) { S.view = v; store.set('view', v); S.dirty = false; render(); window.scrollTo(0, 0); const r = $('.rail'); if (r) r.classList.remove('open'); }
+function go(v) { S.view = v; store.set('view', v); S.dirty = false; S.editRec = null; S.lessonEdit = null; S.compare = null; render(); window.scrollTo(0, 0); const r = $('.rail'); if (r) r.classList.remove('open'); }
 const needProject = () => S.P ? '' : `<section class="panel">${empty('اختر مشروعًا أو أنشئ مشروعًا جديدًا أولًا. <button class="btn small" data-act="go" data-v="projects">مشاريعي</button>')}</section>`;
 const head = (t, lede) => `<div><h1>${esc(t)}</h1>${lede ? `<p class="lede">${lede}</p>` : ''}</div>`;
 const tabs = (key, list) => { const cur = S.tab[key] || list[0][0]; return `<div class="tabs" role="tablist">${list.map(([k, l]) => `<button class="tab" role="tab" aria-selected="${k === cur}" data-act="tab" data-k="${key}" data-v="${k}">${esc(l)}</button>`).join('')}</div>`; };
@@ -185,7 +185,7 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const a = b.dataset.act;
   if (a === 'go') { go(b.dataset.v); return; }
-  if (a === 'tab') { S.tab[b.dataset.k] = b.dataset.v; render(); return; }
+  if (a === 'tab') { S.tab[b.dataset.k] = b.dataset.v; S.editRec = null; render(); return; }
   if (a === 'menu') { const r = $('.rail'); r.classList.toggle('open'); window.scrollTo(0, 0); return; }
   if (a === 'signout') { B.auth.signOut(); return; }
   if (ACT[a]) { e.preventDefault(); try { await ACT[a](b, e); } catch (x) { console.error(x); toast('تعذّر تنفيذ الإجراء.'); } }
@@ -204,6 +204,23 @@ document.addEventListener('change', e => {
   const h = e.target.dataset && e.target.dataset.change; if (h && ACT[h]) ACT[h](e.target, e);
 });
 /* while someone is typing, team updates wait; they appear after saving or on the next page change */
+
+/* ---------- editing and deleting saved records ---------- */
+const editing = c => S.editRec && S.editRec.c === c ? (D[c].find(x => x.id === S.editRec.id) || null) : null;
+const canEditRec = (c, r) => !!r && (isManager() || (r.createdBy === ME.uid && !(c === 'decisions' && r.status && r.status !== 'proposed')));
+const recTools = (c, r) => canEditRec(c, r) ? `<span class="row" style="margin-inline-start:auto"><button type="button" class="btn ghost small" data-act="editrec" data-c="${c}" data-id="${esc(r.id)}">تعديل</button><button type="button" class="btn ghost small" data-act="delrec" data-c="${c}" data-id="${esc(r.id)}">حذف</button></span>` : '';
+const editBanner = (what, r) => `<div class="note">أنتِ تعدّلين ${esc(what)} المحفوظ (${esc(fmtDate(r.createdAt))}). اضغطي «حفظ التعديل» عند الانتهاء.</div>`;
+async function saveEdit(data) {
+  const E = S.editRec; if (!E) return false;
+  let ok = true; try { await coll(E.c).doc(E.id).update(Object.assign({updatedAt: nowIso(), updatedBy: ME.uid}, data)); } catch (x) { dbErr(x); ok = false; } if (!ok) return false;
+  S.editRec = null; toast('حُفظ التعديل.'); return true;
+}
+ACT.editrec = b => { S.editRec = {c: b.dataset.c, id: b.dataset.id}; if (b.dataset.c === 'ai') S.aiDraft = null; S.dirty = false; render(); window.scrollTo(0, 0); };
+ACT.canceledit = () => { S.editRec = null; S.dirty = false; render(); };
+ACT.delrec = async b => {
+  if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'اضغطي مرة أخرى للحذف'; setTimeout(() => { if (document.body.contains(b)) { b.dataset.sure = ''; b.textContent = 'حذف'; } }, 4000); return; }
+  if (await delDoc(b.dataset.c, b.dataset.id)) { if (S.editRec && S.editRec.id === b.dataset.id) S.editRec = null; toast('حُذف.'); }
+};
 
 /* =========================================================
    Dashboard, projects and the 7-step project wizard
@@ -227,7 +244,9 @@ V.dash = () => {
     <div class="row"><button class="btn bigbtn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">جرّب المنصة بثلاثة مشاريع تجريبية</button></div></section>
     ${howItWorks()}`;
   if (!S.P) return `${head('لوحة التحكم')}${invHtml}${empty('اختر مشروعًا من القائمة.')}`;
-  const P = S.P; const c = curCycle(); const pend = D.decisions.filter(d => (d.status || 'proposed') === 'proposed');
+  const P = S.P; const broken = P.createdBy === ME.uid && S.loaded && S.loaded.members && !D.members.length;
+  if (broken) return `${head(P.name)}<section class="panel"><div class="note">هذا المشروع لم يكتمل إنشاؤه: حُفظ اسمه فقط، غالبًا لأن قواعد الأمان الجديدة لم تكن منشورة في Firebase وقت إنشائه.</div><div class="row"><button class="btn" data-act="repairproj">إكمال إنشاء المشروع</button><button class="btn ghost" data-act="delproj" data-id="${esc(P.id)}">حذف المشروع</button></div></section>`;
+  const c = curCycle(); const pend = D.decisions.filter(d => (d.status || 'proposed') === 'proposed');
   return `${head(P.name, `${esc(P.org || '')}${P.org ? ' · ' : ''}${esc(P.stage || '')} · ${esc((P.subjects || []).join('، ') || 'بلا مادة محددة')}${P.grade ? ' · ' + esc(P.grade) : ''}`)}
   ${invHtml}
   <section class="panel hero"><div class="row between"><span class="kicker">${esc(cycleLabel(c))}</span><button class="btn ghost small" data-act="go" data-v="schedule">الجدول التنفيذي</button></div>${c ? stepChips(c) : ''}${nextStepCard(c)}</section>
@@ -268,7 +287,7 @@ V.projects = () => {
   if (S.wiz) return wizardView();
   return `${head('مشاريعي', 'كل مشروع مساحة عمل مستقلة: فريقه ودوراته ودروسه وأدلته ووحداته الاختيارية. يمكنك أن تكون عضوًا في أكثر من مشروع بأدوار مختلفة.')}
   <div class="row"><button class="btn" data-act="newproject">مشروع جديد</button><button class="btn ghost" data-act="demos">إنشاء ثلاثة مشاريع تجريبية</button></div>
-  <section class="panel"><div class="ledger">${S.projects.map(p => { const mine = p.id === S.pid ? meMember() : null; return `<div class="rec${p.id === S.pid ? ' mine' : ''}"><div class="row between"><b style="font-size:17px">${esc(p.name)}</b>${p.id === S.pid ? pill('المشروع الحالي', 'good') : `<button class="btn small" data-act="openproj" data-id="${esc(p.id)}">فتح</button>`}</div>
+  <section class="panel"><div class="ledger">${S.projects.map(p => { const mine = p.id === S.pid ? meMember() : null; return `<div class="rec${p.id === S.pid ? ' mine' : ''}"><div class="row between"><b style="font-size:17px">${esc(p.name)}</b><span class="row">${p.id === S.pid ? pill('المشروع الحالي', 'good') : `<button class="btn small" data-act="openproj" data-id="${esc(p.id)}">فتح</button>`}${p.createdBy === ME.uid ? `<button class="btn ghost small" data-act="delproj" data-id="${esc(p.id)}">حذف</button>` : ''}</span></div>
     <div class="meta"><span>${esc(p.org || '—')}</span><span>${esc(p.stage || '')}</span><span>${esc((p.subjects || []).join('، '))}</span><span>${(p.memberUids || []).length} عضو</span>${(p.managerUids || []).includes(ME.uid) ? pill('إدارة') : ''}</div>
     <div class="row">${MODULES.filter(m => p.modules && p.modules[m[0]]).map(m => pill(m[1])).join(' ')}</div>${mine ? '' : ''}</div>`; }).join('') || empty('لا مشاريع بعد.')}</div></section>`;
 };
@@ -354,7 +373,12 @@ async function createProject(d, extra = {}) {
     S.creating = false; S.pid = pid; store.set('pid', pid); S.subKey = '';
     const found = S.projects.find(p => p.id === pid); if (found) selectProject(pid);
     return pid;
-  } catch (x) { S.creating = false; dbErr(x); return null; }
+  } catch (x) { S.creating = false; await failedCreate(pid, x); return null; }
+}
+async function failedCreate(pid, x) {
+  try { await db.collection('projects').doc(pid).delete(); } catch (e) {}
+  if (x && x.code === 'permission-denied') toast('تعذّر إكمال إنشاء المشروع: قواعد الأمان الجديدة لم تُنشر بعد في Firebase (Firestore ← Rules ← Publish).');
+  else dbErr(x);
 }
 
 /* =========================================================
@@ -565,22 +589,22 @@ function lessonCompare() {
 /* ---------- observation and evidence ---------- */
 V.obs = () => {
   if (!S.P) return head('الملاحظة والأدلة') + needProject();
-  const c = curCycle(); const ls = lessonsOfCycle(c); const keep = S.obsKeep || {};
+  const e = editing('observations'); const keep = e || S.obsKeep || {}; const c = (e && D.cycles.find(x => x.id === e.cycleId)) || curCycle(); const ls = lessonsOfCycle(c);
   const tags = uniq(D.observations.map(o => o.tag).filter(Boolean));
   const fl = S.filters.obs || {}; let list = D.observations.slice().sort(byNew);
   if (fl.cycle) list = list.filter(o => o.cycleId === fl.cycle); if (fl.ind) list = list.filter(o => o.indicator === fl.ind);
   return `${head('الملاحظة والأدلة', 'نلاحظ تعلّم المتعلمين لا أداء المعلم. اكتب ما رأيته أو سمعته بالضبط في «الدليل المباشر»، وتفسيرك المهني منفصلًا عنه. استخدم رموزًا للمتعلمين لا أسماء.')}
-  <form data-form="obs" class="panel"><div class="grid">${field('الدورة', cycleSelect('cycleId', keep.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), keep.lessonId, ls.length ? undefined : 'لا دروس في هذه الدورة'))}${field('المتعلم أو المجموعة', inp('focus', '', 'placeholder="S07 أو مجموعة 2"'))}${field('المؤشر', sel('indicator', (S.P.indicators || DEFAULT_INDICATORS), keep.indicator))}</div>
-    <div class="split"><div class="ev">${field('الدليل المباشر: ماذا قال أو فعل؟', area('direct', '', 'rows="4" required placeholder="اكتب الكلام أو الفعل كما حدث، دون حكم"'))}</div><div class="interp">${field('التفسير المهني (اختياري)', area('interpretation', '', 'rows="4" placeholder="ماذا يعني هذا عن تفكيره؟"'))}</div></div>
-    <div class="grid">${field('نمط صعوبة (وسم اختياري)', `<input name="tag" list="tagList" placeholder="مثال: يخلط بين السبب والنتيجة"><datalist id="tagList">${tags.map(t => `<option value="${esc(t)}">`).join('')}</datalist>`)}${field('الوقت', inp('time', '', 'type="time"'))}${mod('solo') ? field('مستوى SOLO للاستجابة', sel('soloLevel', SOLO.map(s => [s[0], s[0] + ' · ' + s[1]]), '', 'لم يُصنَّف')) : ''}</div>
-    ${mod('customObs') && (S.P.customObsFields || []).length ? `<div class="grid">${S.P.customObsFields.map((x, i) => field(x, inp('cf_' + i, ''))).join('')}</div>` : ''}
-    <div class="row"><button class="btn" type="submit">حفظ الدليل</button><span class="small muted">تبقى الدورة والدرس والمؤشر كما هي لتسجيل الدليل التالي.</span></div></form>
-  <section class="panel"><div class="row between"><h2>الأدلة (${list.length})</h2><div class="row"><select data-change="fobsc" aria-label="تصفية بالدورة">${opts(D.cycles.map(x => [x.id, cycleLabel(x)]), fl.cycle, 'كل الدورات')}</select><select data-change="fobsi" aria-label="تصفية بالمؤشر">${opts(S.P.indicators || [], fl.ind, 'كل المؤشرات')}</select></div></div>
+  <form data-form="obs" class="panel">${e ? editBanner('هذا الدليل', e) : ''}<div class="grid">${field('الدورة', cycleSelect('cycleId', keep.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), keep.lessonId, ls.length ? undefined : 'لا دروس في هذه الدورة'))}${field('المتعلم أو المجموعة', inp('focus', e ? e.focus : '', 'placeholder="S07 أو مجموعة 2"'))}${field('المؤشر', sel('indicator', (S.P.indicators || DEFAULT_INDICATORS), keep.indicator))}</div>
+    <div class="split"><div class="ev">${field('الدليل المباشر: ماذا قال أو فعل؟', area('direct', e ? e.direct : '', 'rows="4" required placeholder="اكتب الكلام أو الفعل كما حدث، دون حكم"'))}</div><div class="interp">${field('التفسير المهني (اختياري)', area('interpretation', e ? e.interpretation : '', 'rows="4" placeholder="ماذا يعني هذا عن تفكيره؟"'))}</div></div>
+    <div class="grid">${field('نمط صعوبة (وسم اختياري)', `<input name="tag" list="tagList" value="${esc(e ? e.tag || '' : '')}" placeholder="مثال: يخلط بين السبب والنتيجة"><datalist id="tagList">${tags.map(t => `<option value="${esc(t)}">`).join('')}</datalist>`)}${field('الوقت', inp('time', e ? e.time : '', 'type="time"'))}${mod('solo') ? field('مستوى SOLO للاستجابة', sel('soloLevel', SOLO.map(s => [s[0], s[0] + ' · ' + s[1]]), e ? e.soloLevel : '', 'لم يُصنَّف')) : ''}</div>
+    ${mod('customObs') && (S.P.customObsFields || []).length ? `<div class="grid">${S.P.customObsFields.map((x, i) => field(x, inp('cf_' + i, e && e.custom ? e.custom[x] || '' : ''))).join('')}</div>` : ''}
+    <div class="row"><button class="btn" type="submit">${e ? 'حفظ التعديل' : 'حفظ الدليل'}</button>${e ? '<button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button>' : '<span class="small muted">تبقى الدورة والدرس والمؤشر كما هي لتسجيل الدليل التالي.</span>'}</div></form>
+  <section class="panel"><div class="row between"><h2>الأدلة (${list.length})</h2><div class="row"><button class="btn ghost small" data-act="xlsxlist" data-c="observations">Excel</button><select data-change="fobsc" aria-label="تصفية بالدورة">${opts(D.cycles.map(x => [x.id, cycleLabel(x)]), fl.cycle, 'كل الدورات')}</select><select data-change="fobsi" aria-label="تصفية بالمؤشر">${opts(S.P.indicators || [], fl.ind, 'كل المؤشرات')}</select></div></div>
   <div class="ledger">${list.slice(0, 60).map(obsCard).join('') || empty('لا أدلة بعد.')}</div></section>`;
 };
 function obsCard(o) {
   const l = D.lessons.find(x => x.id === o.lessonId);
-  return `<div class="rec"><div class="meta"><b>${esc(shortId('O', o.id))}</b><span>${esc(lessonLabel(l))}</span><span>${esc(o.focus || '')}</span>${pill(o.indicator || '')}${o.tag ? pill(o.tag, 'warn') : ''}${o.soloLevel !== undefined && o.soloLevel !== '' ? pill('SOLO ' + soloName(o.soloLevel), 'good') : ''}<span>${esc(memberName(o.createdBy))}</span></div>
+  return `<div class="rec"><div class="meta"><b>${esc(shortId('O', o.id))}</b><span>${esc(lessonLabel(l))}</span><span>${esc(o.focus || '')}</span>${pill(o.indicator || '')}${o.tag ? pill(o.tag, 'warn') : ''}${o.soloLevel !== undefined && o.soloLevel !== '' ? pill('SOLO ' + soloName(o.soloLevel), 'good') : ''}<span>${esc(memberName(o.createdBy))}</span>${recTools('observations', o)}</div>
   <div class="body ev">${esc(o.direct)}</div>${o.interpretation ? `<div class="body interp small">${esc(o.interpretation)}</div>` : ''}${o.custom ? `<div class="tiny muted">${esc(Object.entries(o.custom).map(([k, v]) => k + ': ' + v).join(' · '))}</div>` : ''}</div>`;
 }
 ACT.fobsc = el => { S.filters.obs = Object.assign({}, S.filters.obs, {cycle: el.value}); render(); };
@@ -592,6 +616,7 @@ FORM.obs = async o => {
   const data = {cycleId: o.cycleId, lessonId: o.lessonId || '', lessonVersion: l ? (l.version || 1) : 1, focus: o.focus, indicator: o.indicator, direct: o.direct, interpretation: o.interpretation, tag: o.tag, time: o.time};
   if (mod('solo')) data.soloLevel = o.soloLevel || '';
   if (Object.keys(custom).length) data.custom = custom;
+  if (editing('observations')) { if (!Object.keys(custom).length) data.custom = {}; return saveEdit(data); }
   const id = await addDoc('observations', data); if (!id) return false;
   S.obsKeep = {cycleId: o.cycleId, lessonId: o.lessonId, indicator: o.indicator}; toast('حُفظ الدليل ' + shortId('O', id));
 };
@@ -602,33 +627,33 @@ V.improve = () => {
   if (!S.P) return head('التحسين والتأمل') + needProject();
   const t = curTab('improve', 'decisions'); const c = curCycle();
   let body = '';
-  if (t === 'meetings') body = `<form data-form="meeting" class="panel"><h2>اجتماع جديد</h2><div class="grid">${field('التاريخ', inp('date', today(), 'type="date" required'))}${field('الدورة', cycleSelect())}</div>
-    ${field('جدول الأعمال', area('agenda', 'عرض الأدلة\nالبحث عن نمط\nقرارات التحسين\nالمهام', 'rows="4"'))}${field('الحضور', checks('attendees', memberOpts(), D.members.map(m => m.id)))}
-    ${field('ملخص النقاش', area('notes', '', 'rows="4" placeholder="ما الأدلة التي عُرضت؟ وما الأنماط التي ظهرت؟"'))}<div><button class="btn" type="submit">حفظ المحضر</button></div></form>
-    <section class="panel"><h2>المحاضر</h2><div class="ledger">${D.meetings.slice().sort(byNew).map(m => `<div class="rec"><div class="meta"><b>${esc(shortId('M', m.id))}</b><span>${esc(fmtDate(m.date))}</span><span>${esc(cycleLabel(D.cycles.find(x => x.id === m.cycleId)))}</span><span>${(m.attendees || []).length} حاضر</span></div><div class="body">${esc(m.notes || '')}</div></div>`).join('') || empty('لا محاضر بعد.')}</div></section>`;
-  if (t === 'decisions') { const obs = inCycle(D.observations, c).sort(byNew).slice(0, 30); const ls = lessonsOfCycle(c);
-    body = `<form data-form="decision" class="panel"><h2>قرار تحسين</h2><p class="small muted">كل قرار يُبنى على دليل. اختر الأدلة من ملاحظات هذه الدورة، ثم اكتب القرار وسببه. يعتمده قائد الفريق أو الميسّر.</p>
-    <div class="grid">${field('الدورة', cycleSelect())}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), '', '—'))}${field('الاجتماع', sel('meetingId', D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), '', '—'))}${field('نوع التعديل', sel('type', DEC_TYPES))}</div>
-    ${obs.length ? field('الأدلة التي بُني عليها القرار', `<div class="ledger" style="max-height:260px;overflow:auto">${obs.map(o => `<label class="rec" style="flex-direction:row;gap:8px"><input type="checkbox" name="evidenceIds" value="${esc(o.id)}"><span class="small"><b>${esc(shortId('O', o.id))}</b> ${esc(String(o.direct).slice(0, 120))}</span></label>`).join('')}</div>`) : '<div class="note">لا ملاحظات في هذه الدورة بعد. يمكنك كتابة الدليل نصًّا.</div>'}
-    ${field('الدليل باختصار', area('evidenceText', '', 'rows="2" placeholder="مثال: 5 من 8 ملاحظات أظهرت أن المتعلمين يتوقفون عند الخطوة الثانية"'))}
-    ${field('القرار', area('decision', '', 'rows="2" required'))}${field('السبب والبدائل التي نوقشت', area('rationale', '', 'rows="2"'))}<div><button class="btn" type="submit">حفظ القرار</button></div></form>
-    <section class="panel"><h2>القرارات</h2><div class="ledger">${D.decisions.slice().sort(byNew).map(decCard).join('') || empty('لا قرارات بعد.')}</div></section>`; }
-  if (t === 'reflections') body = `<form data-form="reflection" class="panel"><h2>تأمل</h2><div class="grid">${field('الدورة', cycleSelect())}${mod('pd') ? field('ساعات التطوير المهني في هذه الدورة', inp('hours', '', 'type="number" min="0" step="0.5"')) : ''}</div>
-    ${field('ما الذي تعلّمته عن تفكير المتعلمين؟', area('learned', '', 'rows="3" required'))}${field('ما الذي سأغيّره في تدريسي؟', area('change', '', 'rows="3"'))}<div><button class="btn" type="submit">حفظ التأمل</button></div></form>
-    <section class="panel"><h2>التأملات</h2><div class="ledger">${D.reflections.slice().sort(byNew).map(r => `<div class="rec"><div class="meta"><b>${esc(memberName(r.createdBy))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === r.cycleId)))}</span><span>${esc(fmtDate(r.createdAt))}</span>${r.hours ? pill(r.hours + ' ساعة') : ''}</div><div class="body">${esc(r.learned)}</div>${r.change ? `<div class="small muted">سأغيّر: ${esc(r.change)}</div>` : ''}</div>`).join('') || empty('لا تأملات بعد.')}</div></section>`;
+  if (t === 'meetings') { const e = editing('meetings'); body = `<form data-form="meeting" class="panel"><h2>${e ? 'تعديل المحضر' : 'اجتماع جديد'}</h2>${e ? editBanner('هذا المحضر', e) : ''}<div class="grid">${field('التاريخ', inp('date', e ? e.date : today(), 'type="date" required'))}${field('الدورة', cycleSelect('cycleId', e && e.cycleId))}</div>
+    ${field('جدول الأعمال', area('agenda', e ? e.agenda : 'عرض الأدلة\nالبحث عن نمط\nقرارات التحسين\nالمهام', 'rows="4"'))}${field('الحضور', checks('attendees', memberOpts(), e ? e.attendees : D.members.map(m => m.id)))}
+    ${field('ملخص النقاش', area('notes', e ? e.notes : '', 'rows="4" placeholder="ما الأدلة التي عُرضت؟ وما الأنماط التي ظهرت؟"'))}${field('المهام والمسؤوليات', area('tasks', e ? e.tasks : '', 'rows="3" placeholder="المهمة · المسؤولة · الموعد"'))}<div class="row"><button class="btn" type="submit">${e ? 'حفظ التعديل' : 'حفظ المحضر'}</button>${e ? '<button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button>' : ''}</div></form>
+    <section class="panel"><div class="row between"><h2>المحاضر</h2><button class="btn ghost small" data-act="xlsxlist" data-c="meetings">Excel</button></div><div class="ledger">${D.meetings.slice().sort(byNew).map(m => `<div class="rec"><div class="meta"><b>${esc(shortId('M', m.id))}</b><span>${esc(fmtDate(m.date))}</span><span>${esc(cycleLabel(D.cycles.find(x => x.id === m.cycleId)))}</span><span>${(m.attendees || []).length} حاضر</span>${recTools('meetings', m)}</div><div class="body">${esc(m.notes || '')}</div>${m.tasks ? `<div class="small muted">المهام: ${esc(m.tasks)}</div>` : ''}</div>`).join('') || empty('لا محاضر بعد.')}</div></section>`; }
+  if (t === 'decisions') { const e = editing('decisions'); const cc = (e && D.cycles.find(x => x.id === e.cycleId)) || c; const obs = inCycle(D.observations, cc).sort(byNew).slice(0, 30); const ls = lessonsOfCycle(cc); const ev = new Set((e && e.evidenceIds) || []);
+    body = `<form data-form="decision" class="panel"><h2>${e ? 'تعديل قرار التحسين' : 'قرار تحسين'}</h2>${e ? editBanner('هذا القرار', e) : ''}<p class="small muted">كل قرار يُبنى على دليل. اختر الأدلة من ملاحظات هذه الدورة، ثم اكتب القرار وسببه. يعتمده قائد الفريق أو الميسّر.</p>
+    <div class="grid">${field('الدورة', cycleSelect('cycleId', e && e.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), e ? e.lessonId : '', '—'))}${field('الاجتماع', sel('meetingId', D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), e ? e.meetingId : '', '—'))}${field('نوع التعديل', sel('type', DEC_TYPES, e ? e.type : ''))}</div>
+    ${obs.length ? field('الأدلة التي بُني عليها القرار', `<div class="ledger" style="max-height:260px;overflow:auto">${obs.map(o => `<label class="rec" style="flex-direction:row;gap:8px"><input type="checkbox" name="evidenceIds" value="${esc(o.id)}"${ev.has(o.id) ? ' checked' : ''}><span class="small"><b>${esc(shortId('O', o.id))}</b> ${esc(String(o.direct).slice(0, 120))}</span></label>`).join('')}</div>`) : '<div class="note">لا ملاحظات في هذه الدورة بعد. يمكنك كتابة الدليل نصًّا.</div>'}
+    ${field('الدليل باختصار', area('evidenceText', e ? e.evidenceText : '', 'rows="2" placeholder="مثال: 5 من 8 ملاحظات أظهرت أن المتعلمين يتوقفون عند الخطوة الثانية"'))}
+    ${field('القرار', area('decision', e ? e.decision : '', 'rows="2" required'))}${field('السبب والبدائل التي نوقشت', area('rationale', e ? e.rationale : '', 'rows="2"'))}<div class="row"><button class="btn" type="submit">${e ? 'حفظ التعديل' : 'حفظ القرار'}</button>${e ? '<button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button>' : ''}</div></form>
+    <section class="panel"><div class="row between"><h2>القرارات</h2><button class="btn ghost small" data-act="xlsxlist" data-c="decisions">Excel</button></div><div class="ledger">${D.decisions.slice().sort(byNew).map(decCard).join('') || empty('لا قرارات بعد.')}</div></section>`; }
+  if (t === 'reflections') { const e = editing('reflections'); body = `<form data-form="reflection" class="panel"><h2>${e ? 'تعديل التأمل' : 'تأمل'}</h2>${e ? editBanner('هذا التأمل', e) : ''}<div class="grid">${field('الدورة', cycleSelect('cycleId', e && e.cycleId))}${mod('pd') ? field('ساعات التطوير المهني في هذه الدورة', inp('hours', e ? e.hours : '', 'type="number" min="0" step="0.5"')) : ''}</div>
+    ${field('ما الذي تعلّمته عن تفكير المتعلمين؟', area('learned', e ? e.learned : '', 'rows="3" required'))}${field('ما الذي سأغيّره في تدريسي؟', area('change', e ? e.change : '', 'rows="3"'))}<div class="row"><button class="btn" type="submit">${e ? 'حفظ التعديل' : 'حفظ التأمل'}</button>${e ? '<button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button>' : ''}</div></form>
+    <section class="panel"><div class="row between"><h2>التأملات</h2><button class="btn ghost small" data-act="xlsxlist" data-c="reflections">Excel</button></div><div class="ledger">${D.reflections.slice().sort(byNew).map(r => `<div class="rec"><div class="meta"><b>${esc(memberName(r.createdBy))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === r.cycleId)))}</span><span>${esc(fmtDate(r.createdAt))}</span>${r.hours ? pill(r.hours + ' ساعة') : ''}${recTools('reflections', r)}</div><div class="body">${esc(r.learned)}</div>${r.change ? `<div class="small muted">سأغيّر: ${esc(r.change)}</div>` : ''}</div>`).join('') || empty('لا تأملات بعد.')}</div></section>`; }
   return `${head('التحسين والتأمل', 'من الدليل إلى قرار التحسين: نناقش الأدلة في الاجتماع، ونتخذ قرارات مربوطة بها، ونكتب ما تعلّمناه.')}${tabs('improve', [['decisions', 'قرارات التحسين'], ['meetings', 'الاجتماعات'], ['reflections', 'التأملات']])}${body}`;
 };
 function decCard(d) {
   const st = d.status || 'proposed';
-  return `<div class="rec"><div class="meta"><b>${esc(shortId('D', d.id))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === d.cycleId)))}</span>${pill(Object.fromEntries(DECISION_STATUS)[st], st === 'proposed' ? 'warn' : 'good')}${d.type ? pill(d.type) : ''}<span>${esc(memberName(d.createdBy))}</span></div>
+  return `<div class="rec"><div class="meta"><b>${esc(shortId('D', d.id))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === d.cycleId)))}</span>${pill(Object.fromEntries(DECISION_STATUS)[st], st === 'proposed' ? 'warn' : 'good')}${d.type ? pill(d.type) : ''}<span>${esc(memberName(d.createdBy))}</span>${recTools('decisions', d)}</div>
   <div class="body"><b>${esc(d.decision)}</b></div>${d.rationale ? `<div class="small">السبب: ${esc(d.rationale)}</div>` : ''}
   <div class="small muted">الدليل: ${esc((d.evidenceIds || []).map(x => shortId('O', x)).join('، '))} ${esc(d.evidenceText || '')}</div>
   ${isManager() ? `<div class="row">${st === 'proposed' ? `<button class="btn small" data-act="decst" data-id="${esc(d.id)}" data-st="approved">اعتماد القرار</button>` : ''}${st === 'approved' ? `<button class="btn ghost small" data-act="decst" data-id="${esc(d.id)}" data-st="done">نُفّذ</button>` : ''}</div>` : ''}</div>`;
 }
 ACT.decst = async b => { if (await updDoc('decisions', b.dataset.id, {status: b.dataset.st, [b.dataset.st + 'By']: ME.uid, [b.dataset.st + 'At']: nowIso()})) toast(b.dataset.st === 'approved' ? 'اعتُمد القرار.' : 'سُجّل التنفيذ.'); };
-FORM.meeting = async o => { const id = await addDoc('meetings', {date: o.date, cycleId: o.cycleId, agenda: o.agenda, attendees: o.attendees || [], notes: o.notes}); if (id) toast('حُفظ المحضر ' + shortId('M', id)); return !!id; };
-FORM.decision = async o => { if (!o.decision) { toast('اكتب القرار.'); return false; } if (!(o.evidenceIds || []).length && !o.evidenceText) { toast('القرار يحتاج دليلًا: اختر ملاحظة أو اكتب الدليل.'); return false; } const id = await addDoc('decisions', {cycleId: o.cycleId, lessonId: o.lessonId, meetingId: o.meetingId, type: o.type, evidenceIds: o.evidenceIds || [], evidenceText: o.evidenceText, decision: o.decision, rationale: o.rationale, status: 'proposed'}); if (id) toast('حُفظ القرار ' + shortId('D', id)); return !!id; };
-FORM.reflection = async o => { const id = await addDoc('reflections', {cycleId: o.cycleId, learned: o.learned, change: o.change, hours: o.hours || ''}); if (id) toast('حُفظ التأمل.'); return !!id; };
+FORM.meeting = async o => { if (editing('meetings')) return saveEdit({date: o.date, cycleId: o.cycleId, agenda: o.agenda, attendees: o.attendees || [], notes: o.notes, tasks: o.tasks}); const id = await addDoc('meetings', {date: o.date, cycleId: o.cycleId, agenda: o.agenda, attendees: o.attendees || [], notes: o.notes, tasks: o.tasks}); if (id) toast('حُفظ المحضر ' + shortId('M', id)); return !!id; };
+FORM.decision = async o => { if (!o.decision) { toast('اكتب القرار.'); return false; } if (!(o.evidenceIds || []).length && !o.evidenceText) { toast('القرار يحتاج دليلًا: اختر ملاحظة أو اكتب الدليل.'); return false; } if (editing('decisions')) return saveEdit({cycleId: o.cycleId, lessonId: o.lessonId, meetingId: o.meetingId, type: o.type, evidenceIds: o.evidenceIds || [], evidenceText: o.evidenceText, decision: o.decision, rationale: o.rationale}); const id = await addDoc('decisions', {cycleId: o.cycleId, lessonId: o.lessonId, meetingId: o.meetingId, type: o.type, evidenceIds: o.evidenceIds || [], evidenceText: o.evidenceText, decision: o.decision, rationale: o.rationale, status: 'proposed'}); if (id) toast('حُفظ القرار ' + shortId('D', id)); return !!id; };
+FORM.reflection = async o => { if (editing('reflections')) return saveEdit({cycleId: o.cycleId, learned: o.learned, change: o.change, hours: o.hours || ''}); const id = await addDoc('reflections', {cycleId: o.cycleId, learned: o.learned, change: o.change, hours: o.hours || ''}); if (id) toast('حُفظ التأمل.'); return !!id; };
 
 const SOLO_EX = {
   'الكيمياء': ['لماذا نغيّر المعاملات لا الصيغ عند موازنة المعادلة؟', ['«لأن المعلمة قالت»', '«لأن الأرقام يجب أن تتساوى»', '«الذرات لا تفنى، ونضرب المعامل، والطرفان متساويان»', '«لأن الذرات لا تفنى، فعدد كل نوع يتساوى في الطرفين، لذلك نغيّر المعاملات لا الصيغ؛ تغيير الصيغة يغيّر المادة نفسها»', '«القاعدة نفسها تفسّر لماذا تبدو كتلة الورق ناقصة بعد احتراقه: خرجت الذرات غازات»']],
@@ -685,7 +710,7 @@ V.frameworks = () => {
     const cr = (P && P.criteria) || [];
     body = `<section class="panel"><div class="row between"><h2>معايير مرنة يحددها الفريق</h2>${useBtn('criteria')}</div>
       <p>بعض الفرق لا تحتاج تصنيفًا بمستويات. يكفي أن تتفق على معايير واضحة لما تبحث عنه في عمل المتعلمين، مثل: «يستخدم دليلًا من النص» أو «يشرح خطوات الحل بلغته». تظهر المعايير مؤشراتٍ في بطاقة الملاحظة.</p>
-      ${P ? `<div class="ledger">${cr.map((c, i) => `<div class="rec"><div class="row between"><b>${esc(c.name)}</b>${isManager() ? `<button class="btn ghost small" data-act="delcrit" data-i="${i}">حذف</button>` : ''}</div>${c.desc ? `<div class="small">${esc(c.desc)}</div>` : ''}</div>`).join('') || empty('لا معايير بعد.')}</div>
+      ${P ? `<div class="ledger">${cr.map((c, i) => `<div class="rec"><div class="row between"><b>${esc(c.name)}</b>${isManager() ? `<span class="row"><button class="btn ghost small" data-act="editcrit" data-i="${i}">تعديل</button><button class="btn ghost small" data-act="delcrit" data-i="${i}">حذف</button></span>` : ''}</div>${S.critEdit === i ? `<form data-form="critedit" data-i="${i}" class="grid wide">${field('المعيار', inp('name', c.name, 'required'))}${field('كيف يبدو عند تحققه', inp('desc', c.desc))}<div class="row"><button class="btn small" type="submit">حفظ</button><button type="button" class="btn ghost small" data-act="editcrit" data-i="-1">إلغاء</button></div></form>` : (c.desc ? `<div class="small">${esc(c.desc)}</div>` : '')}</div>`).join('') || empty('لا معايير بعد.')}</div>
       ${isManager() ? `<form data-form="crit" class="stepsec"><div class="grid wide">${field('المعيار', inp('name', '', 'required'))}${field('كيف يبدو عند تحققه', inp('desc', ''))}</div><div><button class="btn small" type="submit">إضافة المعيار</button></div></form>` : ''}` : '<p class="small muted">افتح مشروعًا لتحديد معاييره.</p>'}</section>`;
   }
   if (t === 'none') body = `<section class="panel"><div class="row between"><h2>العمل دون إطار</h2>${useBtn('none')}</div>
@@ -697,6 +722,8 @@ ACT.prac = () => { const subs = Object.keys(SOLO_EX); const sj = subs[Math.floor
 ACT.pracans = b => { const p = S.prac; if (!p || p.ans != null) return; p.ans = b.dataset.v; const sc = S.pracScore || {ok: 0, n: 0}; sc.n++; if (Number(p.ans) === p.i) sc.ok++; S.pracScore = sc; render(); };
 ACT.usefw = async b => { const k = b.dataset.k; const data = {framework: k}; if (k === 'solo') data.modules = Object.assign({}, S.P.modules, {solo: true}); if (k === 'criteria' && (S.P.criteria || []).length) data.indicators = uniq((S.P.indicators || []).concat(S.P.criteria.map(c => c.name))); if (await updProject(data)) toast('اعتُمد الإطار للمشروع.'); };
 FORM.crit = async o => { if (!o.name) return false; const cr = (S.P.criteria || []).concat({name: o.name, desc: o.desc}); const data = {criteria: cr}; if (S.P.framework === 'criteria') data.indicators = uniq((S.P.indicators || []).concat(o.name)); if (await updProject(data)) toast('أُضيف المعيار.'); };
+ACT.editcrit = b => { S.critEdit = Number(b.dataset.i); render(); };
+FORM.critedit = async (o, f) => { const cr = (S.P.criteria || []).slice(); const i = Number(f.dataset.i); const old = cr[i]; cr[i] = {name: o.name, desc: o.desc}; const data = {criteria: cr}; if (old && old.name !== o.name) data.indicators = (S.P.indicators || []).map(x => x === old.name ? o.name : x); S.critEdit = null; if (await updProject(data)) toast('حُفظ المعيار.'); };
 ACT.delcrit = async b => { const cr = (S.P.criteria || []).slice(); cr.splice(Number(b.dataset.i), 1); await updProject({criteria: cr}); };
 
 /* ---------- SOLO module: depth of learning across lesson versions ---------- */
@@ -718,17 +745,17 @@ V.solo = () => {
   if (!mod('solo')) return head('تصنيف SOLO') + `<section class="panel">${empty('وحدة SOLO غير مفعّلة في هذا المشروع.')}</section>`;
   const c = curCycle(); const ls = lessonsOfCycle(c);
   const v1 = c ? soloLevelsFor(c, 1) : {ex: [], ob: []}; const v2 = c ? soloLevelsFor(c, 2) : {ex: [], ob: []};
-  const d1 = soloDist(v1.ex), d2 = soloDist(v2.ex);
+  const d1 = soloDist(v1.ex), d2 = soloDist(v2.ex); const se = editing('soloscores');
   return `${head('تصنيف SOLO في المشروع', 'نرصد مستوى كل متعلم في المهمة الختامية للدرس، ثم نقارن توزيع المستويات بين النسخة الأولى من الدرس والنسخة المعدّلة. المتعلمون برموز فقط.')}
   <section class="panel"><div class="row between">${field('الدورة', `<select data-change="lcycle">${opts(D.cycles.slice().sort((a, b) => (a.n || 0) - (b.n || 0)).map(x => [x.id, cycleLabel(x)]), c && c.id)}</select>`)}<button class="btn ghost small" data-act="go" data-v="frameworks">دليل SOLO والتدريب</button></div>
     <div class="cols"><div class="mini"><b>النسخة الأولى V1: المهمة الختامية</b>${soloBars(d1)}</div><div class="mini"><b>النسخة المعدّلة V2: المهمة الختامية</b>${soloBars(d2)}</div></div>
     ${d1.n && d2.n ? `<div class="${d2.mean > d1.mean ? 'ok' : 'note'}">تغيّر المتوسط من ${f2(d1.mean)} إلى ${f2(d2.mean)}، ونسبة «علائقي فأعلى» من ${Math.round(d1.rel * 100)}% إلى ${Math.round(d2.rel * 100)}%. هذه قراءة وصفية للفريق، وليست اختبارًا إحصائيًا.</div>` : '<p class="small muted">تظهر المقارنة عندما يُرصد نشاط الختام في النسختين.</p>'}
     ${(v1.ob.length || v2.ob.length) ? `<p class="small muted">ومن بطاقات الملاحظة: ${v1.ob.length} استجابة مصنّفة في V1 بمتوسط ${f2(avg(v1.ob.map(Number)))}، و${v2.ob.length} في V2 بمتوسط ${f2(avg(v2.ob.map(Number)))}.</p>` : ''}</section>
-  <form data-form="soloscore" class="panel"><h2>رصد مستويات المهمة الختامية</h2>
-    <div class="grid">${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), '', ls.length ? undefined : 'لا دروس في هذه الدورة'))}${field('الصف أو الشعبة (رمز)', inp('group', '', 'placeholder="مثال: 1/3"'))}${field('التاريخ', inp('date', today(), 'type="date"'))}</div>
-    ${field('المستويات', area('scores', '', 'rows="6" dir="ltr" placeholder="S001 3\nS002 2\nS003 1"'), 'سطر لكل متعلم: الرمز ثم المستوى من 0 إلى 4. لا تكتب أسماء.')}
-    <div><button class="btn" type="submit">حفظ الرصد</button></div></form>
-  <section class="panel"><h2>الرصد المحفوظ</h2><div class="ledger">${D.soloscores.slice().sort(byNew).map(s => { const l = D.lessons.find(x => x.id === s.lessonId); const dd = soloDist(Object.values(s.scores || {})); return `<div class="rec"><div class="meta"><b>${esc(lessonLabel(l))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === s.cycleId)))}</span><span>${esc(s.group || '')}</span><span>${esc(fmtDate(s.date))}</span><span>${dd.n} متعلم · متوسط ${f2(dd.mean)}</span><button class="btn ghost small" data-act="delsolo" data-id="${esc(s.id)}">حذف</button></div></div>`; }).join('') || empty('لا رصد بعد.')}</div></section>
+  <form data-form="soloscore" class="panel"><h2>${se ? 'تعديل الرصد' : 'رصد مستويات المهمة الختامية'}</h2>${se ? editBanner('هذا الرصد', se) : ''}
+    <div class="grid">${field('الدرس', sel('lessonId', (se ? D.lessons.filter(l => l.cycleId === se.cycleId) : ls).map(l => [l.id, lessonLabel(l)]), se ? se.lessonId : '', ls.length || se ? undefined : 'لا دروس في هذه الدورة'))}${field('الصف أو الشعبة (رمز)', inp('group', se ? se.group : '', 'placeholder="مثال: 1/3"'))}${field('التاريخ', inp('date', se ? se.date : today(), 'type="date"'))}</div>
+    ${field('المستويات', area('scores', se ? Object.entries(se.scores || {}).map(([k, v]) => k + ' ' + v).join('\n') : '', 'rows="6" dir="ltr" placeholder="S001 3\nS002 2\nS003 1"'), 'سطر لكل متعلم: الرمز ثم المستوى من 0 إلى 4. لا تكتب أسماء.')}
+    <div class="row"><button class="btn" type="submit">${se ? 'حفظ التعديل' : 'حفظ الرصد'}</button>${se ? '<button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button>' : ''}</div></form>
+  <section class="panel"><h2>الرصد المحفوظ</h2><div class="ledger">${D.soloscores.slice().sort(byNew).map(s => { const l = D.lessons.find(x => x.id === s.lessonId); const dd = soloDist(Object.values(s.scores || {})); return `<div class="rec"><div class="meta"><b>${esc(lessonLabel(l))}</b><span>${esc(cycleLabel(D.cycles.find(x => x.id === s.cycleId)))}</span><span>${esc(s.group || '')}</span><span>${esc(fmtDate(s.date))}</span><span>${dd.n} متعلم · متوسط ${f2(dd.mean)}</span>${recTools('soloscores', s)}</div></div>`; }).join('') || empty('لا رصد بعد.')}</div></section>
   <section class="panel"><h2>مواءمة الدروس</h2><div class="ledger">${ls.map(l => `<div class="rec"><b>${esc(lessonLabel(l))}</b>${soloAlignment(l) || '<span class="small muted">لم تُصنّف أسئلته بعد.</span>'}</div>`).join('') || empty('لا دروس.')}</div></section>`;
 };
 function parseScores(txt, max = 4) {
@@ -747,6 +774,7 @@ FORM.soloscore = async o => {
   if (bad.length) { toast('سطر غير صحيح: «' + bad[0] + '». اكتب رمزًا مثل S001 ثم مستوى من 0 إلى 4.'); return false; }
   if (Object.values(out).some(Array.isArray)) { toast('اكتب مستوى واحدًا لكل متعلم.'); return false; }
   if (!Object.keys(out).length) { toast('لا مستويات.'); return false; }
+  if (editing('soloscores')) return saveEdit({cycleId: l.cycleId, lessonId: l.id, lessonVersion: l.version || 1, group: o.group, date: o.date, scores: out});
   const id = await addDoc('soloscores', {cycleId: l.cycleId, lessonId: l.id, lessonVersion: l.version || 1, group: o.group, date: o.date, scores: out});
   if (id) toast('حُفظ رصد ' + Object.keys(out).length + ' متعلم.'); return !!id;
 };
@@ -784,14 +812,21 @@ V.ai = () => {
   return `${head('مساعد الذكاء الاصطناعي', 'يبني لك طلبًا (برومبت) من سياق المشروع والدرس دون أي بيانات شخصية، فتنسخه إلى أداة الذكاء الاصطناعي التي تستخدمها، ثم تسجّل ما اقترحته وحكم الفريق عليه: قبول أو تعديل أو رفض، مع السبب.')}
   <form data-form="aibuild" class="panel"><h2>1. ابنِ الطلب</h2><div class="grid">${field('الغرض', sel('purpose', purposes.map(p => [p[0], p[1]]), d.purpose))}${field('الدورة', cycleSelect('cycleId', d.cycleId))}${field('الدرس', sel('lessonId', ls.map(l => [l.id, lessonLabel(l)]), d.lessonId, '—'))}</div>
     ${field('إضافة من الفريق (اختياري)', area('extra', d.extra, 'rows="2" placeholder="مثال: المتعلمون يخلطون بين المفهومين"'))}<div><button class="btn" type="submit">ابنِ الطلب</button></div></form>
-  ${d.prompt ? `<section class="panel"><h2>2. انسخ الطلب واستخدمه</h2>${privacyIssue(d.prompt) ? `<div class="note">${esc(privacyIssue(d.prompt))}</div>` : '<div class="ok">لا يحتوي الطلب أسماء أو بيانات شخصية.</div>'}<textarea id="aiPrompt" rows="10" dir="rtl">${esc(d.prompt)}</textarea>
+  ${editing('ai') ? aiEditForm(editing('ai')) : ''}
+  ${d.prompt && !editing('ai') ? `<section class="panel"><h2>2. انسخ الطلب واستخدمه</h2>${privacyIssue(d.prompt) ? `<div class="note">${esc(privacyIssue(d.prompt))}</div>` : '<div class="ok">لا يحتوي الطلب أسماء أو بيانات شخصية.</div>'}<textarea id="aiPrompt" rows="10" dir="rtl">${esc(d.prompt)}</textarea>
     <div class="row"><button class="btn small" data-act="copyprompt">نسخ</button><a class="btn ghost small" target="_blank" rel="noopener" href="https://claude.ai/new?q=${encodeURIComponent(d.prompt.slice(0, 6000))}">فتح في Claude</a></div></section>
   <form data-form="ailog" class="panel"><h2>3. سجّل المقترح وحكم الفريق</h2>${field('ما اقترحه الذكاء الاصطناعي', area('output', '', 'rows="5" required placeholder="الصق المقترح هنا"'))}
     <div class="grid">${field('حكم الفريق', sel('judgment', AI_JUDGE, 'modify'))}${field('السبب', inp('reason', '', 'required placeholder="لماذا قبلناه أو عدّلناه أو رفضناه؟"'))}</div>
     ${field('النص المعتمد بعد المراجعة', area('adopted', '', 'rows="3" placeholder="ما الذي دخل الخطة فعلًا؟"'))}<div><button class="btn" type="submit">حفظ في السجل</button></div></form>` : ''}
-  <section class="panel"><h2>سجل الاستخدام (${log.length})</h2><div class="kpis"><div class="kpi"><b>${cnt('accept')}</b><span>قبول</span></div><div class="kpi"><b>${cnt('modify')}</b><span>قبول بتعديل</span></div><div class="kpi"><b>${cnt('reject')}</b><span>رفض</span></div></div>
-    <div class="ledger">${log.map(x => `<div class="rec"><div class="meta"><b>${esc(shortId('AI', x.id))}</b><span>${esc((AI_PURPOSES.find(p => p[0] === x.purpose) || [, ''])[1])}</span><span>${esc(lessonLabel(D.lessons.find(l => l.id === x.lessonId)))}</span>${pill(Object.fromEntries(AI_JUDGE)[x.judgment] || '', x.judgment === 'reject' ? 'warn' : 'good')}<span>${esc(memberName(x.createdBy))}</span></div><div class="small">${esc(String(x.output || '').slice(0, 300))}</div><div class="small"><b>السبب:</b> ${esc(x.reason)}</div>${x.adopted ? `<div class="small"><b>المعتمد:</b> ${esc(x.adopted)}</div>` : ''}</div>`).join('') || empty('لا استخدامات مسجلة بعد.')}</div></section>`;
+  <section class="panel"><div class="row between"><h2>سجل الاستخدام (${log.length})</h2><button class="btn ghost small" data-act="xlsxlist" data-c="ai">Excel</button></div><div class="kpis"><div class="kpi"><b>${cnt('accept')}</b><span>قبول</span></div><div class="kpi"><b>${cnt('modify')}</b><span>قبول بتعديل</span></div><div class="kpi"><b>${cnt('reject')}</b><span>رفض</span></div></div>
+    <div class="ledger">${log.map(x => `<div class="rec"><div class="meta"><b>${esc(shortId('AI', x.id))}</b><span>${esc((AI_PURPOSES.find(p => p[0] === x.purpose) || [, ''])[1])}</span><span>${esc(lessonLabel(D.lessons.find(l => l.id === x.lessonId)))}</span>${pill(Object.fromEntries(AI_JUDGE)[x.judgment] || '', x.judgment === 'reject' ? 'warn' : 'good')}<span>${esc(memberName(x.createdBy))}</span>${recTools('ai', x)}</div><div class="small">${esc(String(x.output || '').slice(0, 300))}</div><div class="small"><b>السبب:</b> ${esc(x.reason)}</div>${x.adopted ? `<div class="small"><b>المعتمد:</b> ${esc(x.adopted)}</div>` : ''}</div>`).join('') || empty('لا استخدامات مسجلة بعد.')}</div></section>`;
 };
+function aiEditForm(e) {
+  return `<form data-form="aiedit" class="panel"><h2>تعديل سجل الذكاء الاصطناعي</h2>${editBanner('هذا السجل', e)}${field('ما اقترحه الذكاء الاصطناعي', area('output', e.output, 'rows="5" required'))}
+    <div class="grid">${field('حكم الفريق', sel('judgment', AI_JUDGE, e.judgment))}${field('السبب', inp('reason', e.reason, 'required'))}</div>
+    ${field('النص المعتمد بعد المراجعة', area('adopted', e.adopted, 'rows="3"'))}<div class="row"><button class="btn" type="submit">حفظ التعديل</button><button type="button" class="btn ghost" data-act="canceledit">إلغاء التعديل</button></div></form>`;
+}
+FORM.aiedit = async o => saveEdit({output: o.output, judgment: o.judgment, reason: o.reason, adopted: o.adopted});
 FORM.aibuild = async o => { S.aiDraft = Object.assign({}, o, {prompt: aiPrompt(o)}); };
 ACT.copyprompt = async () => { const t = $('#aiPrompt'); try { await navigator.clipboard.writeText(t.value); toast('نُسخ الطلب.'); } catch (x) { t.select(); toast('حدّد النص وانسخه.'); } };
 FORM.ailog = async o => {
@@ -895,6 +930,84 @@ const EXPORT_COLS = {lessons: ['id', 'cycleId', 'familyId', 'version', 'title', 
 ACT.rexport = b => { const c = b.dataset.c; if (!(S.P.researchShare || {})[c]) { toast('هذه البيانات غير مشاركة مع الباحث.'); return; } download(`burhan_${c}_${today()}.csv`, csvOf(D[c], EXPORT_COLS[c])); };
 
 /* =========================================================
+   Real Word (.docx) and Excel (.xlsx) files, built in the browser
+   with no outside library: a tiny ZIP writer + Office XML.
+   ========================================================= */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipFiles(files) {
+  const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+  const u16 = v => [v & 255, (v >>> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  files.forEach(([name, text]) => {
+    const nb = enc.encode(name), db = enc.encode(text), crc = crc32(db);
+    const common = [...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0)];
+    const local = new Uint8Array([...u32(0x04034b50), ...common]);
+    parts.push(local, nb, db);
+    central.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), nb);
+    off += local.length + nb.length + db.length;
+  });
+  const cdSize = central.reduce((s, p) => s + p.length, 0);
+  const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(cdSize), ...u32(off), ...u16(0)]);
+  return new Blob([...parts, ...central, end]);
+}
+const xesc = s => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+function downloadBlob(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800); }
+
+/* ---- Excel: sheets = [{name, rows: [[...], ...], widths: [..], head: true}] ---- */
+function colName(i) { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+function xlsxBlob(sheets) {
+  const used = new Set(); const names = sheets.map(sh => { let n = String(sh.name || 'ورقة').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 28) || 'ورقة'; let k = n, i = 2; while (used.has(k)) k = n.slice(0, 25) + ' ' + i++; used.add(k); return k; });
+  const sheetXml = sh => {
+    const rows = sh.rows || []; const ncol = Math.max(1, ...rows.map(r => r.length));
+    const widths = Array.from({length: ncol}, (_, i) => (sh.widths && sh.widths[i]) || Math.min(60, Math.max(10, ...rows.map(r => String(r[i] ?? '').length * 0.9))));
+    return XML + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"${sh.head ? '' : ''}/></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${Math.round(w)}" customWidth="1"/>`).join('')}</cols><sheetData>${rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => { const ref = colName(ci) + (ri + 1); const st = sh.head && ri === 0 ? 1 : 2; if (typeof v === 'number' && isFinite(v)) return `<c r="${ref}" s="${st}"><v>${v}</v></c>`; if (v === '' || v == null) return ''; return `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xesc(v)}</t></is></c>`; }).join('')}</row>`).join('')}</sheetData></worksheet>`;
+  };
+  const files = [
+    ['[Content_Types].xml', XML + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+    ['_rels/.rels', XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', XML + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xesc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml', XML + `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><color rgb="FF0E5B58"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEDEA"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBBBBBB"/></left><right style="thin"><color rgb="FFBBBBBB"/></right><top style="thin"><color rgb="FFBBBBBB"/></top><bottom style="thin"><color rgb="FFBBBBBB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`]
+  ].concat(sheets.map((sh, i) => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(sh)]));
+  return zipFiles(files);
+}
+const tableRows = t => Array.from(t.rows).map(r => Array.from(r.cells).map(c => { const v = (c.innerText || c.textContent || '').trim(); return /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v; }));
+
+/* ---- Word: converts a report's HTML (h2, h3, p, ul/ol, table) into a right-to-left A4 .docx ---- */
+function docxBlob(root, title) {
+  const run = (t, o = {}) => `<w:r><w:rPr><w:rtl/>${o.b ? '<w:b/><w:bCs/>' : ''}${o.color ? `<w:color w:val="${o.color}"/>` : ''}${o.sz ? `<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>` : ''}</w:rPr><w:t xml:space="preserve">${xesc(t)}</w:t></w:r>`;
+  const runsOf = (el, o = {}) => { const out = []; el.childNodes.forEach(n => { if (n.nodeType === 3) { if (n.textContent.trim()) out.push(run(n.textContent.replace(/\s+/g, ' '), o)); } else if (n.nodeName === 'BR') out.push('<w:r><w:br/></w:r>'); else if (n.nodeType === 1) out.push(runsOf(n, Object.assign({}, o, /^(B|STRONG|TH)$/.test(n.nodeName) ? {b: true} : {}))); }); return out.join(''); };
+  const para = (inner, o = {}) => `<w:p><w:pPr><w:bidi/>${o.style ? `<w:pStyle w:val="${o.style}"/>` : ''}<w:spacing w:before="${o.before || 0}" w:after="${o.after == null ? 120 : o.after}"/></w:pPr>${inner}</w:p>`;
+  const tableXml = t => {
+    const rows = Array.from(t.rows); const ncol = Math.max(1, ...rows.map(r => r.cells.length)); const w = Math.floor(9638 / ncol);
+    const b = '<w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:color="999999"/>';
+    return `<w:tbl><w:tblPr><w:bidiVisual/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${b}</w:tblBorders><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${Array.from({length: ncol}, () => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${rows.map(r => `<w:tr>${Array.from(r.cells).map(c => { const head = c.nodeName === 'TH'; return `<w:tc><w:tcPr><w:tcW w:w="${w * (c.colSpan || 1)}" w:type="dxa"/>${c.colSpan > 1 ? `<w:gridSpan w:val="${c.colSpan}"/>` : ''}${head ? '<w:shd w:val="clear" w:color="auto" w:fill="DDEDEA"/>' : ''}</w:tcPr>${para(runsOf(c, head ? {b: true, sz: 20} : {sz: 20}), {after: 0})}</w:tc>`; }).join('')}${Array.from({length: Math.max(0, ncol - Array.from(r.cells).reduce((s, c) => s + (c.colSpan || 1), 0))}, () => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr><w:p/></w:tc>`).join('')}</w:tr>`).join('')}</w:tbl>${para('', {after: 60})}`;
+  };
+  const body = [];
+  const walk = el => Array.from(el.children).forEach(n => {
+    const tag = n.nodeName;
+    if (n.classList && n.classList.contains('rephead')) { const sp = n.querySelector('span'); const top = Array.from(n.childNodes).filter(x => x !== sp).map(x => x.textContent).join('').trim(); body.push(para(run(top, {b: true, color: '0E5B58'}), {after: 0})); if (sp) body.push(para(run(sp.textContent.trim(), {sz: 18, color: '666666'}), {after: 200})); return; }
+    if (tag === 'H2') body.push(para(run(n.textContent.trim(), {b: true, sz: 32, color: '0E5B58'}), {before: 120, after: 160}));
+    else if (tag === 'H3') body.push(para(run(n.textContent.trim(), {b: true, sz: 26, color: '0E5B58'}), {before: 200, after: 80}));
+    else if (tag === 'TABLE') body.push(tableXml(n));
+    else if (tag === 'UL' || tag === 'OL') Array.from(n.children).forEach((li, i) => body.push(para(run(tag === 'OL' ? (i + 1) + '. ' : '• ') + runsOf(li), {after: 60})));
+    else if (tag === 'P' || tag === 'SPAN' || tag === 'B') { if (n.textContent.trim()) body.push(para(runsOf(n, n.classList && n.classList.contains('tiny') ? {sz: 16, color: '666666'} : {}))); }
+    else if (n.children.length) walk(n);
+    else if (n.textContent.trim()) body.push(para(runsOf(n)));
+  });
+  walk(root);
+  const doc = XML + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/><w:bidi/></w:sectPr></w:body></w:document>`;
+  const styles = XML + `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="ar-SA" w:bidi="ar-SA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  return zipFiles([
+    ['[Content_Types].xml', XML + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`],
+    ['_rels/.rels', XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`],
+    ['word/_rels/document.xml.rels', XML + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['word/document.xml', doc], ['word/styles.xml', styles],
+    ['docProps/core.xml', XML + `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xesc(title || 'بُرهان')}</dc:title><dc:creator>بُرهان</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString().slice(0, 19)}Z</dcterms:created></cp:coreProperties>`]]);
+}
+
+/* =========================================================
    Analytics and the eight reports (print/PDF, Word, CSV),
    demo projects, and backups
    ========================================================= */
@@ -943,7 +1056,7 @@ const REPORTS = [
       <h3>مؤشرات الملاحظة</h3><p>${esc((P.indicators || []).join('، '))}</p>${P.framework && P.framework !== 'none' ? `<p class="small">الإطار المعتمد: ${esc(P.framework === 'solo' ? 'تصنيف SOLO' : 'معايير الفريق')}</p>` : ''}`); }},
   {k: 'lesson', n: 'خطة الدرس البحثي', d: 'كل عناصر الخطة لنسخة محددة.', p: 'lesson', build(o) { const l = D.lessons.find(x => x.id === o.lessonId); if (!l) return ''; return repWrap(this.n, `<p class="small">${esc(cycleLabel(D.cycles.find(c => c.id === l.cycleId)))}</p>${lessonBody(l)}`); }},
   {k: 'meeting', n: 'محضر الاجتماع', d: 'جدول الأعمال والحضور والنقاش والقرارات.', p: 'meeting', build(o) { const m = D.meetings.find(x => x.id === o.meetingId); if (!m) return ''; const decs = D.decisions.filter(d => d.meetingId === m.id);
-    return repWrap(this.n + ' ' + shortId('M', m.id), `${kv([['التاريخ', fmtDate(m.date)], ['الدورة', cycleLabel(D.cycles.find(c => c.id === m.cycleId))], ['الحضور', (m.attendees || []).map(memberName).join('، ')], ['جدول الأعمال', m.agenda], ['ملخص النقاش', m.notes]])}<h3>القرارات</h3>${tbl(decCols, decRows(decs))}`); }},
+    return repWrap(this.n + ' ' + shortId('M', m.id), `${kv([['التاريخ', fmtDate(m.date)], ['الدورة', cycleLabel(D.cycles.find(c => c.id === m.cycleId))], ['الحضور', (m.attendees || []).map(memberName).join('، ')], ['جدول الأعمال', m.agenda], ['ملخص النقاش', m.notes], ['المهام والمسؤوليات', m.tasks || '']])}<h3>القرارات</h3>${tbl(decCols, decRows(decs))}`); }},
   {k: 'obs', n: 'تقرير الملاحظة', d: 'أدلة الدورة: الدليل المباشر منفصلًا عن التفسير.', p: 'cycle', csv: true, build(o) { const c = D.cycles.find(x => x.id === o.cycleId); if (!c) return ''; const list = inCycle(D.observations, c).sort(byOld);
     return repWrap(this.n, `<p class="small">${esc(cycleLabel(c))} · ${list.length} دليل</p><h3>حسب المؤشر</h3>${tbl(['المؤشر', 'العدد'], countBy(list, x => x.indicator).map(([k, n]) => [esc(k), n]))}<h3>الأدلة</h3>${tbl(obsCols(), obsRows(list))}`); },
     rows(o) { return inCycle(D.observations, D.cycles.find(x => x.id === o.cycleId)).map(x => ({id: shortId('O', x.id), version: x.lessonVersion || 1, focus: x.focus, indicator: x.indicator, direct: x.direct, interpretation: x.interpretation, tag: x.tag, solo: x.soloLevel ?? ''})); }},
@@ -969,33 +1082,68 @@ const REPORTS = [
       <h3>التعديلات التي ثبتت</h3>${tbl(decCols, decRows(D.decisions.filter(d => d.status === 'done' || d.status === 'approved')))}
       <h3>الصعوبات المتكررة</h3>${tbl(['النمط', 'العدد'], countBy(D.observations, x => x.tag).map(([k, n]) => [esc(k), n]))}`); }}];
 
+/* Each report: preview, Word, Excel, and print/PDF — straight from its card. */
+const REP_KIND = {team: 'word', plan: 'word', lesson: 'word', meeting: 'word', obs: 'excel', cycle: 'word', project: 'excel', lessons: 'word'};
+const latest = arr => arr.slice().sort(byNew)[0];
+function repParams(r) {
+  const o = Object.assign({}, (S.repParams || {})[r.k]);
+  if (r.p === 'cycle' && !D.cycles.some(c => c.id === o.cycleId)) o.cycleId = (curCycle() || {}).id;
+  if (r.p === 'lesson' && !D.lessons.some(l => l.id === o.lessonId)) o.lessonId = (latest(D.lessons) || {}).id;
+  if (r.p === 'meeting' && !D.meetings.some(m => m.id === o.meetingId)) o.meetingId = (latest(D.meetings) || {}).id;
+  return o;
+}
+const REP_NEED = {cycle: 'أنشئي دورة أولًا من «الجدول التنفيذي».', lesson: 'اكتبي خطة درس أولًا من «الدروس البحثية».', meeting: 'سجّلي محضر اجتماع أولًا من «التحسين والتأمل».'};
+function repParamField(r, o) {
+  if (r.p === 'cycle') return D.cycles.length ? `<select data-change="repparam" data-k="${r.k}" data-p="cycleId" aria-label="الدورة">${opts(cyclesSorted().map(c => [c.id, cycleLabel(c)]), o.cycleId)}</select>` : '';
+  if (r.p === 'lesson') return D.lessons.length ? `<select data-change="repparam" data-k="${r.k}" data-p="lessonId" aria-label="الدرس">${opts(D.lessons.slice().sort((a, b) => String(a.cycleId).localeCompare(String(b.cycleId)) || (a.version || 1) - (b.version || 1)).map(l => [l.id, cycleLabel(D.cycles.find(c => c.id === l.cycleId)) + ' · ' + lessonLabel(l)]), o.lessonId)}</select>` : '';
+  if (r.p === 'meeting') return D.meetings.length ? `<select data-change="repparam" data-k="${r.k}" data-p="meetingId" aria-label="الاجتماع">${opts(D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), o.meetingId)}</select>` : '';
+  return '';
+}
 V.reports = () => {
   if (!S.P) return head('التقارير والتحليلات') + needProject();
   const t = curTab('rep', 'reports');
   let body = '';
   if (t === 'analytics') body = analyticsView();
   else {
-    const r = REPORTS.find(x => x.k === (S.rep || {}).k); const o = S.rep || {};
-    body = `<section class="panel"><h2>اختر التقرير</h2><div class="grid">${REPORTS.map(x => `<button class="action${r && r.k === x.k ? ' on' : ''}" data-act="pickrep" data-k="${x.k}"><b>${esc(x.n)}</b><span>${esc(x.d)}</span></button>`).join('')}</div></section>`;
-    if (r) {
-      let param = '';
-      if (r.p === 'cycle') param = field('الدورة', `<select data-change="repparam" data-p="cycleId">${opts(cyclesSorted().map(c => [c.id, cycleLabel(c)]), o.cycleId, '— اختر —')}</select>`);
-      if (r.p === 'lesson') param = field('نسخة الدرس', `<select data-change="repparam" data-p="lessonId">${opts(D.lessons.slice().sort((a, b) => String(a.cycleId).localeCompare(String(b.cycleId)) || (a.version || 1) - (b.version || 1)).map(l => [l.id, cycleLabel(D.cycles.find(c => c.id === l.cycleId)) + ' · ' + lessonLabel(l)]), o.lessonId, '— اختر —')}</select>`);
-      if (r.p === 'meeting') param = field('الاجتماع', `<select data-change="repparam" data-p="meetingId">${opts(D.meetings.slice().sort(byNew).map(m => [m.id, shortId('M', m.id) + ' · ' + fmtDate(m.date)]), o.meetingId, '— اختر —')}</select>`);
-      const html = r.build(o);
-      body += `<section class="panel"><div class="row between"><h2>${esc(r.n)}</h2><div class="row">${html ? `<button class="btn small" data-act="repprint">طباعة أو PDF</button><button class="btn ghost small" data-act="repword">Word</button>${r.csv ? '<button class="btn ghost small" data-act="repcsv">Excel / CSV</button>' : ''}` : ''}</div></div>${param}
-        ${html || '<p class="small muted">اختر ما يُبنى عليه التقرير.</p>'}</section>`;
-    }
+    body = `<section class="panel"><p class="small muted">كل تقرير يُبنى من بيانات المشروع مباشرة. الصيغة الموصى بها لكل تقرير مميّزة باللون. ملف Word يُفتح ويُعدَّل في Microsoft Word، وملف Excel فيه كل جداول التقرير كل جدول في ورقة.</p>
+      <div class="repgrid">${REPORTS.map(r => { const o = repParams(r); const html = r.build(o); const kind = REP_KIND[r.k];
+        return `<div class="repcard${S.rep && S.rep.k === r.k ? ' on' : ''}"><b>${esc(r.n)}</b><span class="small muted">${esc(r.d)}</span>${repParamField(r, o)}
+        ${html ? `<div class="row"><button class="btn small ${kind === 'word' ? '' : 'ghost'}" data-act="repword" data-k="${r.k}">Word</button><button class="btn small ${kind === 'excel' ? '' : 'ghost'}" data-act="repxlsx" data-k="${r.k}">Excel</button><button class="btn ghost small" data-act="repprint" data-k="${r.k}">طباعة / PDF</button><button class="btn ghost small" data-act="pickrep" data-k="${r.k}">معاينة</button></div>` : `<div class="note small">${esc(REP_NEED[r.p] || 'لا بيانات بعد.')}</div>`}</div>`; }).join('')}</div></section>`;
+    const r = REPORTS.find(x => x.k === (S.rep || {}).k);
+    if (r) { const html = r.build(repParams(r)); if (html) body += `<section class="panel" id="repPreview"><div class="row between"><h2>معاينة: ${esc(r.n)}</h2><button class="btn ghost small" data-act="closerep">إغلاق المعاينة</button></div>${html}</section>`; }
   }
-  return `${head('التقارير والتحليلات', 'تقارير بالعربية وبمقاس A4 تُبنى من بيانات المشروع مباشرة: اطبعها أو احفظها PDF، أو نزّلها Word أو CSV.')}${tabs('rep', [['reports', 'التقارير'], ['analytics', 'التحليلات']])}${body}`;
+  return `${head('التقارير والتحليلات', 'تقارير بحث الدرس بالعربية وبمقاس A4: نزّليها Word أو Excel، أو اطبعيها واحفظيها PDF.')}${tabs('rep', [['reports', 'التقارير'], ['analytics', 'التحليلات']])}${body}`;
 };
-ACT.pickrep = b => { S.rep = {k: b.dataset.k, cycleId: (curCycle() || {}).id}; render(); };
-ACT.repparam = el => { S.rep[el.dataset.p] = el.value; render(); };
-const curRep = () => { const r = REPORTS.find(x => x.k === (S.rep || {}).k); return r ? {r, html: r.build(S.rep)} : null; };
-ACT.repprint = () => { const x = curRep(); if (!x) return; $('#printArea').innerHTML = x.html; window.print(); };
+ACT.pickrep = b => { S.rep = {k: b.dataset.k}; render(); const el = $('#repPreview'); if (el) el.scrollIntoView({behavior: 'smooth'}); };
+ACT.closerep = () => { S.rep = null; render(); };
+ACT.repparam = el => { S.repParams = S.repParams || {}; S.repParams[el.dataset.k] = Object.assign({}, S.repParams[el.dataset.k], {[el.dataset.p]: el.value}); render(); };
+const repOf = k => { const r = REPORTS.find(x => x.k === k); if (!r) return null; const o = repParams(r); const html = r.build(o); return html ? {r, o, html} : null; };
+const fileName = (r, ext) => `${r.n} - ${S.P.name} - ${today()}.${ext}`.replace(/[\\/:*?"<>|]/g, '-');
+ACT.repprint = b => { const x = repOf(b.dataset.k); if (!x) return; $('#printArea').innerHTML = x.html; setTimeout(() => window.print(), 50); };
 const wordDoc = html => `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>بُرهان</title><style>@page{size:21cm 29.7cm;margin:2cm}body{font-family:Arial,'Traditional Arabic';direction:rtl;font-size:12pt}table{border-collapse:collapse;width:100%;margin:6pt 0}th,td{border:1px solid #999;padding:4pt;text-align:right;vertical-align:top}th{background:#eee}.rephead span{display:block;color:#555;font-size:10pt}.tiny,.small{font-size:9pt;color:#555}</style></head><body dir="rtl" lang="ar">${html}</body></html>`;
-ACT.repword = () => { const x = curRep(); if (!x) return; download(`${x.r.n} - ${S.P.name}.doc`, wordDoc(x.html), 'application/msword'); };
-ACT.repcsv = () => { const x = curRep(); if (!x || !x.r.rows) return; const rows = x.r.rows(S.rep); download(`${x.r.n} - ${today()}.csv`, csvOf(rows, rows.length ? Object.keys(rows[0]) : ['—'])); };
+ACT.repword = b => { const x = repOf(b.dataset.k); if (!x) return; const box = document.createElement('div'); box.innerHTML = x.html; downloadBlob(fileName(x.r, 'docx'), docxBlob(box.firstElementChild || box, x.r.n)); toast('نُزّل ملف Word: ' + x.r.n); };
+/* Excel: a cover sheet, then every table in the report as its own sheet. */
+async function saveWorkbook(name, sheets) { downloadBlob(name, xlsxBlob(sheets)); toast('نُزّل ملف Excel.'); }
+ACT.repxlsx = async b => {
+  const x = repOf(b.dataset.k); if (!x) return;
+  const box = document.createElement('div'); box.innerHTML = x.html;
+  const sheets = [{name: 'التقرير', rows: [['بُرهان', ''], ['التقرير', x.r.n], ['المشروع', S.P.name], ['المؤسسة', S.P.org || ''], ['المادة', projSubjects().join('، ')], ['تاريخ الإصدار', today()], [], ['المتعلمون مشار إليهم برموز.']], widths: [18, 60]}];
+  $$('table', box).forEach((t, i) => { let h = t.previousElementSibling; while (h && !/^H[23]$/.test(h.tagName)) h = h.previousElementSibling; sheets.push({name: h ? h.textContent : 'جدول ' + (i + 1), rows: tableRows(t), head: !!t.querySelector('th') && !!t.tHead}); });
+  await saveWorkbook(fileName(x.r, 'xlsx'), sheets);
+};
+/* Excel straight from a list (observations, meetings, decisions, reflections, AI log) */
+const LIST_X = {
+  observations: ['الملاحظات', o => ({'الرمز': shortId('O', o.id), 'الدورة': cycleLabel(D.cycles.find(c => c.id === o.cycleId)), 'الدرس': lessonLabel(D.lessons.find(l => l.id === o.lessonId)), 'النسخة': 'V' + (o.lessonVersion || 1), 'المتعلم': o.focus || '', 'المؤشر': o.indicator || '', 'الدليل المباشر': o.direct || '', 'التفسير المهني': o.interpretation || '', 'نمط الصعوبة': o.tag || '', 'SOLO': o.soloLevel ?? '', 'الملاحِظ': memberName(o.createdBy), 'التاريخ': fmtDate(o.createdAt)})],
+  meetings: ['المحاضر', m => ({'الرمز': shortId('M', m.id), 'التاريخ': m.date || '', 'الدورة': cycleLabel(D.cycles.find(c => c.id === m.cycleId)), 'الحضور': (m.attendees || []).map(memberName).join('، '), 'جدول الأعمال': m.agenda || '', 'ملخص النقاش': m.notes || '', 'المهام': m.tasks || ''})],
+  decisions: ['القرارات', d => ({'الرمز': shortId('D', d.id), 'الدورة': cycleLabel(D.cycles.find(c => c.id === d.cycleId)), 'النوع': d.type || '', 'القرار': d.decision || '', 'السبب': d.rationale || '', 'الدليل': (d.evidenceIds || []).map(x => shortId('O', x)).join('، ') + ' ' + (d.evidenceText || ''), 'الحالة': decLabel(d.status), 'بواسطة': memberName(d.createdBy), 'التاريخ': fmtDate(d.createdAt)})],
+  reflections: ['التأملات', r => ({'العضو': memberName(r.createdBy), 'الدورة': cycleLabel(D.cycles.find(c => c.id === r.cycleId)), 'ما تعلّمته': r.learned || '', 'ما سأغيّره': r.change || '', 'الساعات': r.hours || '', 'التاريخ': fmtDate(r.createdAt)})],
+  ai: ['سجل الذكاء الاصطناعي', x => ({'الرمز': shortId('AI', x.id), 'الغرض': (AI_PURPOSES.find(p => p[0] === x.purpose) || [, ''])[1], 'الدرس': lessonLabel(D.lessons.find(l => l.id === x.lessonId)), 'المقترح': x.output || '', 'الحكم': Object.fromEntries(AI_JUDGE)[x.judgment] || '', 'السبب': x.reason || '', 'النص المعتمد': x.adopted || '', 'بواسطة': memberName(x.createdBy), 'التاريخ': fmtDate(x.createdAt)})]};
+ACT.xlsxlist = async b => {
+  const c = b.dataset.c; const L = LIST_X[c]; if (!L) return; const rows = D[c].slice().sort(byOld).map(L[1]);
+  if (!rows.length) { toast('لا سجلات للتصدير بعد.'); return; }
+  const cols = Object.keys(rows[0]);
+  await saveWorkbook(`${L[0]} - ${S.P.name} - ${today()}.xlsx`.replace(/[\\/:*?"<>|]/g, '-'), [{name: L[0], head: true, rows: [cols].concat(rows.map(r => cols.map(k => r[k]))), widths: cols.map(k => /الدليل|القرار|ملخص|المقترح|تعلّمته|التفسير/.test(k) ? 50 : 16)}]);
+};
 
 /* ---------- backups ---------- */
 const LEGACY = ['access', 'team', 'classes', 'cycles', 'lessons', 'ai', 'notes', 'meetings', 'decisions', 'evidence', 'tasks', 'practice', 'exports', 'instruments', 'rqs', 'library', 'config'];
@@ -1045,6 +1193,9 @@ const DEMOS = [
    decision: 'إضافة جدول «ما أغيّره / ما أقيسه / ما أثبّته» في ورقة التصميم', proposeOnly: true}];
 async function seedDemo(spec) {
   const pid = await createProject(spec.wiz, {demo: true, indicators: spec.indicators || DEFAULT_INDICATORS.slice(), customObsFields: spec.customObsFields || []}); if (!pid) return null;
+  try { await fillDemo(pid, spec); return pid; } catch (x) { await failedCreate(pid, x); return null; }
+}
+async function fillDemo(pid, spec) {
   const pr = db.collection('projects').doc(pid); const put = (c, id, data) => pr.collection(c).doc(id).set(Object.assign({createdBy: ME.uid, createdAt: nowIso()}, data));
   await pr.collection('cycles').doc('c1').set({title: '', topic: spec.topic, status: 'active', lessonDate: today(), teacherUid: ME.uid, observers: [ME.uid], contentStudy: 'دراسة الفريق للموضوع في المنهج: المفاهيم الأساسية والمتطلبات السابقة والأخطاء الشائعة وتدرّج الفكرة.'}, {merge: true});
   await put('lessons', 'le1', Object.assign({cycleId: 'c1', version: 1, familyId: 'le1', parentId: '', topic: spec.topic}, spec.lesson));
@@ -1072,6 +1223,20 @@ ACT.demos = async b => {
   if (b.dataset.busy) return; b.dataset.busy = 1; b.disabled = true; toast('يجري إنشاء المشاريع التجريبية…');
   const ids = []; for (const sp of DEMOS) { const id = await seedDemo(sp); if (!id) break; ids.push(id); }
   if (ids.length) { S.pid = ids[0]; store.set('pid', ids[0]); S.subKey = ''; S.cycleId = 'c1'; store.set('cycle', 'c1'); if (S.projects.some(p => p.id === ids[0])) selectProject(ids[0]); S.view = 'dash'; store.set('view', 'dash'); toast('أُنشئت ' + ids.length + ' مشاريع تجريبية. بدّل بينها من القائمة الجانبية.'); render(); }
+};
+
+/* ---------- deleting a project, and repairing one whose creation stopped half-way ---------- */
+ACT.delproj = async b => {
+  if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'اضغطي مرة أخرى للحذف النهائي'; return; }
+  try { await db.collection('projects').doc(b.dataset.id).delete(); toast('حُذف المشروع.'); if (S.pid === b.dataset.id) { S.pid = ''; store.set('pid', ''); } } catch (x) { dbErr(x); }
+};
+ACT.repairproj = async b => {
+  b.disabled = true; const P = S.P; const pr = pref();
+  try {
+    await pr.collection('members').doc(ME.uid).set({uid: ME.uid, email: ME.email, name: ME.name || ME.email, roles: (P.researcherUids || []).includes(ME.uid) ? ['leader', 'researcher'] : ['leader'], school: P.org || '', joinedAt: nowIso()});
+    if (!D.cycles.length) { const n = Math.max(1, Math.min(12, Number((P.schedule || {}).cycles) || 1)); for (let k = 1; k <= n; k++) await pr.collection('cycles').doc('c' + k).set({n: k, title: '', status: k === 1 ? 'active' : 'planned', topic: '', createdBy: ME.uid, createdAt: nowIso()}); }
+    toast('اكتمل إنشاء المشروع.');
+  } catch (x) { b.disabled = false; if (x.code === 'permission-denied') toast('ما زالت قواعد الأمان القديمة مفعّلة. انشري القواعد الجديدة في Firebase أولًا.'); else dbErr(x); }
 };
 
 /* ---------- after each render, and start-up ---------- */

@@ -320,6 +320,11 @@ th{font-size:13px;color:var(--muted);font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 #view[data-stale]::before{content:"وصلت تحديثات من الفريق؛ ستظهر بعد الحفظ أو الانتقال إلى صفحة أخرى.";display:block;font-size:13px;color:var(--amber);background:var(--amber-soft);padding:6px 10px;border-radius:8px;margin-bottom:8px}
 @media print{#printArea th,#printArea td{border:1px solid #999}#printArea .rephead{color:#000}}
+.repgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.repcard{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.repcard.on{border-color:var(--accent);background:var(--accent-soft)}
+.repcard b{color:var(--accent);font-size:16px}
+.repcard select{min-height:40px;border-radius:8px;border:1px solid var(--line);padding:0 8px;font:inherit}
 </style>
 </head><body>
 <div class="shell" dir="rtl" lang="ar" id="app">
@@ -372,7 +377,7 @@ th{font-size:13px;color:var(--muted);font-weight:600}
     if (!u) { if (booted) location.reload(); $('gate').hidden = false; return; }
     if (booted) return; booted = true; $('gate').hidden = true;
     window.BURHAN = {auth, db, user: {uid: u.uid, email: String(u.email || '').toLowerCase(), name: window.BURHAN_NEWNAME || u.displayName || ''}};
-    const s = document.createElement('script'); s.src = 'app.js?v=202610130011'; document.body.appendChild(s);
+    const s = document.createElement('script'); s.src = 'app.js?v=202610131941'; document.body.appendChild(s);
   });
 })();
 </script>
